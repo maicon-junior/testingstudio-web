@@ -1,0 +1,8 @@
+# A chave do Gemini nunca vai para o repositorio.
+.streamlit/secrets.toml
+
+# Arquivos gerados
+__pycache__/
+build/
+dist/
+*.exe

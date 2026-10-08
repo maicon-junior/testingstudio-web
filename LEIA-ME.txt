@@ -1,8 +1,19 @@
 TestingStudio Web - Sprint 1 (Teste de Software I, Prof. Frank Piffer)
 ======================================================================
 
+O QUE A PAGINA FAZ
+  Sprint 1  Caixa-preta: classes de equivalencia e valor limite com Epsilon.
+  Sprint 2  Caixa-branca: grafo de fluxo de controle, nos (N), arestas (E),
+            predicativos (P), regioes (R), V(G) pelos tres metodos de McCabe
+            e cobertura de nos, arestas e caminhos por caso de teste.
+  Sprint 3  Fluxo de dados (pares Def-Uso) e teste de mutacao (escore MS).
+  Sprint 4  Validacao com os gabaritos dos slides, laboratorio de exercicios
+            e roteiro do pitch.
+
 ARQUIVOS DESTA PASTA
-  app.py                     A pagina (leitura do .txt, PCE, AVL, graficos, Gemini).
+  app.py                     A pagina (leitura do .txt, tabelas, graficos, Gemini).
+  motor.py                   Os calculos: interpretador de 4GL, grafo, McCabe,
+                             fluxo de dados, mutantes e validacao.
   requirements.txt           Bibliotecas que o servidor instala ao publicar.
   .streamlit/config.toml     Visual da pagina (cores e fontes).
   .gitignore                 Impede que a chave e arquivos gerados subam ao GitHub.
@@ -27,6 +38,11 @@ PUBLICAR ONLINE (a chave do Gemini fica escondida no servidor)
      Clique em Save e depois em Deploy.
   6. Em alguns minutos a pagina abre. O endereco que aparece no navegador
      e o link para enviar ao professor.
+
+  Para ATUALIZAR uma pagina ja publicada: no repositorio do GitHub, clique
+  em Add file, Upload files, arraste de novo os arquivos desta pasta
+  (principalmente app.py e motor.py) e clique em Commit changes. O Streamlit
+  republica sozinho em um ou dois minutos; o link continua o mesmo.
 
   O que o professor ve: a pagina completa, sem campo de chave. A barra
   lateral so informa que a chave esta guardada no servidor.

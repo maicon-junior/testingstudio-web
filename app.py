@@ -1,14 +1,14 @@
 """
-TestingStudio Web - Sprint 1: Auditoria de Caixa-Preta (PCE & AVL) do CAD0001
+TestingStudio Web - Auditoria de teste do CAD0001 (Sprints 1 a 4)
 Disciplina: Teste de Software I | Prof. Frank Piffer
 
-O que a pagina faz, na ordem:
-  1. Le o arquivo .txt do programa (so depois que voce anexa).
-  2. Extrai a funcao cad0001_calcula_valor e calcula o Epsilon pelo tipo DECIMAL.
-  3. EXECUTA a logica da funcao (mini-interpretador de 4GL) para cada caso de teste.
-  4. Compara o resultado obtido com o esperado pela especificacao (oraculo).
-  5. Mostra indicadores de qualidade, tabelas, grafico de fronteira e fontes.
-  6. Opcional: pede ao Gemini um parecer escrito sobre os resultados.
+  Sprint 1 - Caixa-preta: classes de equivalencia (PCE) e valor limite (AVL) com Epsilon.
+  Sprint 2 - Caixa-branca: grafo de fluxo de controle, nos, arestas e V(G) de McCabe.
+  Sprint 3 - Fluxo de dados (pares Def-Uso) e teste de mutacao (escore MS).
+  Sprint 4 - Validacao com gabaritos das aulas, laboratorio de exercicios e pitch.
+
+Este arquivo cuida da PAGINA (leitura do .txt, tabelas, graficos, Gemini).
+Os calculos das Sprints 2 a 4 e o interpretador de 4GL ficam em motor.py.
 
 Abrir no computador:  dois cliques em Abrir_TestingStudio.bat   (ou: python iniciar.py)
 Publicar online:      veja o LEIA-ME.txt. A chave do Gemini fica no servidor, em "Secrets".
@@ -16,8 +16,8 @@ Publicar online:      veja o LEIA-ME.txt. A chave do Gemini fica no servidor, em
 
 import hashlib
 import html
+import json
 import os
-import re
 from datetime import datetime
 from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
@@ -25,6 +25,8 @@ from pathlib import Path
 import altair as alt
 import pandas as pd
 import streamlit as st
+
+import motor
 
 PASTA = Path(__file__).resolve().parent
 ARQUIVO_EXEMPLO = "cad0001_item_calculo.txt"
@@ -46,8 +48,8 @@ MODELOS = ["gemini-2.5-flash", "gemini-3.5-flash-lite", "gemini-3.8-flash"]
 REFERENCIAS = [
     ("DELAMARO, M. E.; MALDONADO, J. C.; JINO, M. Introdução ao Teste de Software. "
      "Rio de Janeiro: Elsevier, 2007.",
-     "Base da disciplina: teste funcional, particionamento em classes de equivalência "
-     "e análise do valor limite."),
+     "Base da disciplina: teste funcional (PCE e AVL), teste estrutural (GFC e critérios de "
+     "cobertura), fluxo de dados e teste de mutação."),
     ("MYERS, G. J.; SANDLER, C.; BADGETT, T. The Art of Software Testing. 3. ed. "
      "Hoboken: John Wiley & Sons, 2011.",
      "Regra de montar um caso por classe inválida, para que uma falha não esconda outra."),
@@ -61,6 +63,21 @@ REFERENCIAS = [
      "Vocabulário de caso de teste, resultado esperado e cobertura."),
     ("IBM. Informix 4GL Reference Manual — tipo de dado DECIMAL(p,s).",
      "Precisão e escala do tipo, de onde sai o Épsilon."),
+    ("McCABE, T. J. A complexity measure. IEEE Transactions on Software Engineering, "
+     "v. SE-2, n. 4, p. 308-320, 1976.",
+     "Complexidade ciclomática V(G) e conjunto básico de caminhos independentes."),
+    ("RAPPS, S.; WEYUKER, E. J. Selecting software test data using data flow information. "
+     "IEEE Transactions on Software Engineering, v. SE-11, n. 4, p. 367-375, 1985.",
+     "Critérios de fluxo de dados: todas-definições, todos-c-usos, todos-p-usos e todos-usos."),
+    ("DeMILLO, R. A.; LIPTON, R. J.; SAYWARD, F. G. Hints on test data selection: help for the "
+     "practicing programmer. Computer, v. 11, n. 4, p. 34-41, 1978.",
+     "Teste de mutação: hipótese do programador competente e efeito de acoplamento."),
+    ("BOURQUE, P.; FAIRLEY, R. E. (ed.). Guide to the Software Engineering Body of Knowledge "
+     "(SWEBOK), version 3.0. IEEE Computer Society, 2014.",
+     "Terminologia de verificação, validação e técnicas de teste."),
+    ("PIFFER, F. Slides das aulas de Teste de Software I, de 26/08 a 30/09/2026.",
+     "Notação do GFC, os três métodos de McCabe, pares DU, operadores de mutação e os "
+     "exemplos usados na validação da ferramenta."),
     ("PIFFER, F. Manual de Laboratório — Sprint 1: TestingStudio Web. "
      "Teste de Software I, 2026.2.",
      "Especificação do CAD0001 e os quatro pontos de fronteira (Tabela 1)."),
@@ -105,311 +122,7 @@ def esquecer_fonte() -> None:
 
 
 # ==========================================================================
-# PASSO 2 - Unidade sob teste e Epsilon
-# ==========================================================================
-def extrair_funcao(fonte: str, nome: str):
-    """Localiza 'FUNCTION nome(params) ... END FUNCTION' e devolve
-    (lista de parametros, corpo da funcao). Retorna None se nao achar."""
-    padrao = rf"FUNCTION\s+{nome}\s*\((.*?)\)(.*?)END\s+FUNCTION"
-    achado = re.search(padrao, fonte, re.IGNORECASE | re.DOTALL)
-    if not achado:
-        return None
-    parametros = [p.strip().lower() for p in achado.group(1).split(",") if p.strip()]
-    return parametros, achado.group(2)
-
-
-def calcular_epsilon(corpo: str):
-    """Le o DECIMAL(precisao, escala) da funcao e calcula o Epsilon.
-
-    Epsilon = menor variacao que o tipo consegue representar = 10 ^ -escala.
-    DECIMAL(12,2) -> escala 2 -> epsilon = 10^-2 = 0,01 (1 centavo).
-    Maior valor  = 10^(precisao - escala) - epsilon = 9.999.999.999,99.
-    """
-    achado = re.search(r"DECIMAL\s*\(\s*(\d+)\s*,\s*(\d+)\s*\)", corpo, re.IGNORECASE)
-    if not achado:
-        return None
-    precisao, escala = int(achado.group(1)), int(achado.group(2))
-    epsilon = Decimal(10) ** -escala
-    maximo = Decimal(10) ** (precisao - escala) - epsilon
-    return precisao, escala, epsilon, maximo
-
-
-# ==========================================================================
-# PASSO 3 - Mini-interpretador de 4GL
-# Executa de verdade a logica da funcao carregada. Entende o subconjunto usado
-# no CAD0001: DEFINE, IF/THEN/ELSE/END IF, LET, RETURN, IS [NOT] NULL,
-# comparacoes, AND/OR/NOT e aritmetica. Se o fonte mudar (por exemplo, trocar
-# '<' por '<='), o resultado dos testes muda junto.
-# ==========================================================================
-class Erro4GL(Exception):
-    """Erro ao interpretar ou executar o fonte 4GL."""
-
-
-PALAVRAS = {"if", "then", "else", "end", "let", "return", "define",
-            "and", "or", "not", "is", "null", "true", "false",
-            # comandos que o interpretador reconhece so para avisar que nao executa
-            "while", "for", "foreach", "case", "when", "call", "display", "message",
-            "select", "insert", "update", "delete", "whenever", "goto", "exit", "continue"}
-PADRAO_TOKEN = re.compile(
-    r"\s*(?:(\d+\.\d+|\d+|\.\d+)|([A-Za-z_][\w.]*)|(<=|>=|<>|!=|==|[-+*/()=<>,]))")
-
-
-def tokenizar(codigo: str):
-    """Quebra o texto em tokens: ('num', Decimal), ('palavra', 'if'),
-    ('nome', 'p_val1') ou ('op', '<=')."""
-    codigo = re.sub(r"\{.*?\}", " ", codigo, flags=re.DOTALL)   # comentario { }
-    codigo = re.sub(r"(#|--).*", " ", codigo)                    # comentario # e --
-    tokens, pos = [], 0
-    while pos < len(codigo):
-        achado = PADRAO_TOKEN.match(codigo, pos)
-        if not achado:
-            resto = codigo[pos:].strip()
-            if not resto:
-                break
-            raise Erro4GL(f"símbolo não reconhecido perto de '{resto[:20]}'")
-        numero, nome, operador = achado.groups()
-        if numero:
-            tokens.append(("num", Decimal(numero)))
-        elif nome:
-            nome = nome.lower()
-            tokens.append(("palavra" if nome in PALAVRAS else "nome", nome))
-        else:
-            tokens.append(("op", operador))
-        pos = achado.end()
-    return tokens
-
-
-class Analisador:
-    """Transforma a lista de tokens em uma arvore de comandos."""
-
-    def __init__(self, tokens):
-        self.tokens, self.pos, self.declaradas = tokens, 0, set()
-
-    def atual(self):
-        return self.tokens[self.pos] if self.pos < len(self.tokens) else ("fim", "")
-
-    def e(self, tipo, *valores):
-        t, v = self.atual()
-        return t == tipo and (not valores or v in valores)
-
-    def avancar(self):
-        token = self.atual()
-        self.pos += 1
-        return token
-
-    def exigir(self, tipo, valor):
-        if not self.e(tipo, valor):
-            raise Erro4GL(f"esperava '{str(valor).upper()}' e encontrei '{self.atual()[1]}'")
-        return self.avancar()
-
-    # ---- comandos --------------------------------------------------------
-    def bloco(self, *fins):
-        comandos = []
-        while not self.e("fim") and not (fins and self.e("palavra", *fins)):
-            comando = self.comando()
-            if comando:
-                comandos.append(comando)
-        return comandos
-
-    def comando(self):
-        if self.e("palavra", "define"):
-            self.avancar()
-            while not self.e("fim") and not self.e("palavra"):
-                tipo, valor = self.avancar()
-                if tipo == "nome":
-                    self.declaradas.add(valor)
-            return None
-        if self.e("palavra", "if"):
-            self.avancar()
-            condicao = self.expressao()
-            self.exigir("palavra", "then")
-            entao = self.bloco("else", "end")
-            senao = []
-            if self.e("palavra", "else"):
-                self.avancar()
-                senao = self.bloco("end")
-            self.exigir("palavra", "end")
-            self.exigir("palavra", "if")
-            return ("if", condicao, entao, senao)
-        if self.e("palavra", "let"):
-            self.avancar()
-            if not self.e("nome"):
-                raise Erro4GL("LET sem nome de variável")
-            nome = self.avancar()[1]
-            self.exigir("op", "=")
-            return ("let", nome, self.expressao())
-        if self.e("palavra", "return"):
-            self.avancar()
-            inicia_expressao = (self.e("num") or self.e("nome") or self.e("op", "(", "-", "+")
-                                or self.e("palavra", "not", "null", "true", "false"))
-            return ("return", self.expressao() if inicia_expressao else None)
-        raise Erro4GL(f"comando não suportado: '{self.atual()[1]}'")
-
-    # ---- expressoes (da menor para a maior precedencia) ------------------
-    def expressao(self):
-        no = self.conjuncao()
-        while self.e("palavra", "or"):
-            self.avancar()
-            no = ("logico", "or", no, self.conjuncao())
-        return no
-
-    def conjuncao(self):
-        no = self.negacao()
-        while self.e("palavra", "and"):
-            self.avancar()
-            no = ("logico", "and", no, self.negacao())
-        return no
-
-    def negacao(self):
-        if self.e("palavra", "not"):
-            self.avancar()
-            return ("nao", self.negacao())
-        return self.comparacao()
-
-    def comparacao(self):
-        no = self.soma()
-        if self.e("palavra", "is"):
-            self.avancar()
-            negado = self.e("palavra", "not")
-            if negado:
-                self.avancar()
-            self.exigir("palavra", "null")
-            return ("is_null", no, negado)
-        if self.e("op", "<", "<=", ">", ">=", "=", "==", "<>", "!="):
-            operador = self.avancar()[1]
-            return ("compara", operador, no, self.soma())
-        return no
-
-    def soma(self):
-        no = self.produto()
-        while self.e("op", "+", "-"):
-            operador = self.avancar()[1]
-            no = ("conta", operador, no, self.produto())
-        return no
-
-    def produto(self):
-        no = self.unario()
-        while self.e("op", "*", "/"):
-            operador = self.avancar()[1]
-            no = ("conta", operador, no, self.unario())
-        return no
-
-    def unario(self):
-        if self.e("op", "-"):
-            self.avancar()
-            return ("negativo", self.unario())
-        if self.e("op", "+"):
-            self.avancar()
-            return self.unario()
-        return self.primario()
-
-    def primario(self):
-        tipo, valor = self.avancar()
-        if tipo == "num":
-            return ("num", valor)
-        if tipo == "nome":
-            return ("var", valor)
-        if tipo == "palavra" and valor == "null":
-            return ("nulo",)
-        if tipo == "palavra" and valor in ("true", "false"):
-            return ("num", Decimal(1 if valor == "true" else 0))
-        if tipo == "op" and valor == "(":
-            no = self.expressao()
-            self.exigir("op", ")")
-            return no
-        raise Erro4GL(f"expressão inválida perto de '{valor}'")
-
-
-class _Retorno(Exception):
-    def __init__(self, valor):
-        self.valor = valor
-
-
-def compilar_funcao(parametros, corpo: str):
-    """Analisa o corpo da funcao uma unica vez. Devolve o 'programa' pronto
-    para ser executado varias vezes com entradas diferentes."""
-    analisador = Analisador(tokenizar(corpo))
-    comandos = analisador.bloco()
-    if not analisador.e("fim"):
-        raise Erro4GL(f"trecho não interpretado a partir de '{analisador.atual()[1]}'")
-    return {"comandos": comandos, "parametros": list(parametros),
-            "variaveis": set(parametros) | analisador.declaradas}
-
-
-def _avaliar(no, ambiente, variaveis):
-    tipo = no[0]
-    if tipo == "num":
-        return no[1]
-    if tipo == "nulo":
-        return None
-    if tipo == "var":
-        if no[1] not in variaveis:
-            raise Erro4GL(f"variável '{no[1]}' não foi declarada")
-        return ambiente.get(no[1])
-    if tipo == "negativo":
-        valor = _avaliar(no[1], ambiente, variaveis)
-        return None if valor is None else -valor
-    if tipo == "nao":
-        return not bool(_avaliar(no[1], ambiente, variaveis))
-    if tipo == "is_null":
-        e_nulo = _avaliar(no[1], ambiente, variaveis) is None
-        return (not e_nulo) if no[2] else e_nulo
-    if tipo == "logico":
-        esquerda = bool(_avaliar(no[2], ambiente, variaveis))
-        if no[1] == "and":
-            return esquerda and bool(_avaliar(no[3], ambiente, variaveis))
-        return esquerda or bool(_avaliar(no[3], ambiente, variaveis))
-    a = _avaliar(no[2], ambiente, variaveis)
-    b = _avaliar(no[3], ambiente, variaveis)
-    if tipo == "compara":
-        if a is None or b is None:        # em SQL/4GL, comparar com NULL nunca e verdadeiro
-            return False
-        return {"<": a < b, "<=": a <= b, ">": a > b, ">=": a >= b,
-                "=": a == b, "==": a == b, "<>": a != b, "!=": a != b}[no[1]]
-    if a is None or b is None:            # conta com NULL resulta em NULL
-        return None
-    if no[1] == "+":
-        return a + b
-    if no[1] == "-":
-        return a - b
-    if no[1] == "*":
-        return a * b
-    if b == 0:
-        raise Erro4GL("divisão por zero")
-    return a / b
-
-
-def _executar(comandos, ambiente, variaveis, epsilon):
-    for comando in comandos:
-        if comando[0] == "let":
-            valor = _avaliar(comando[2], ambiente, variaveis)
-            if isinstance(valor, Decimal):    # variavel DECIMAL(p,e) arredonda na escala
-                valor = valor.quantize(epsilon, ROUND_HALF_UP)
-            ambiente[comando[1]] = valor
-        elif comando[0] == "if":
-            ramo = comando[2] if bool(_avaliar(comando[1], ambiente, variaveis)) else comando[3]
-            _executar(ramo, ambiente, variaveis, epsilon)
-        elif comando[0] == "return":
-            raise _Retorno(None if comando[1] is None else _avaliar(comando[1], ambiente, variaveis))
-
-
-def executar_funcao(programa, entradas, epsilon):
-    """Roda a funcao com as entradas dadas e devolve o valor do RETURN."""
-    ambiente = dict(zip(programa["parametros"], entradas))
-    try:
-        _executar(programa["comandos"], ambiente, programa["variaveis"], epsilon)
-        resultado = None                       # funcao terminou sem RETURN
-    except _Retorno as retorno:
-        resultado = retorno.valor
-    if isinstance(resultado, bool):
-        resultado = Decimal(int(resultado))
-    if isinstance(resultado, Decimal):
-        resultado = resultado.quantize(epsilon, ROUND_HALF_UP)
-    return resultado
-
-
-# ==========================================================================
-# PASSO 4 - Oraculo, classes de equivalencia e casos de teste
+# PASSO 2 - Oraculo, classes de equivalencia e casos de teste
 # ==========================================================================
 def oraculo(entradas, epsilon) -> Decimal:
     """Resultado ESPERADO segundo a especificacao (nao olha o codigo)."""
@@ -458,11 +171,8 @@ ACHADOS = {
 def montar_caso(ident, tecnica, alvo, rotulo, entradas, programa, epsilon, maximo, descricao=""):
     """Executa um caso de teste e compara o obtido com o esperado."""
     esperado = oraculo(entradas, epsilon)
-    obtido, erro = None, None
-    try:
-        obtido = executar_funcao(programa, entradas, epsilon)
-    except Erro4GL as problema:
-        erro = str(problema)
+    execucao = motor.executar_funcao(programa, entradas, epsilon)
+    obtido, erro = execucao["valor"], execucao["erro"]
 
     achado, observacao = "", descricao
     if abs(esperado) > maximo:
@@ -553,7 +263,7 @@ def medir_qualidade(casos, nomes, epsilon):
 
 
 # ==========================================================================
-# PASSO 5 - Apresentacao: formatos, tabelas e grafico
+# PASSO 3 - Apresentacao: formatos, tabelas e grafico
 # ==========================================================================
 def formato_br(valor) -> str:
     """Numero no padrao brasileiro (1.234,56). None vira NULL."""
@@ -727,10 +437,12 @@ ESTILO = """
 """
 
 
-def gerar_relatorio_html(dados) -> str:
-    """Relatorio completo em uma pagina HTML, pronta para apresentar ou
-    imprimir em PDF pelo navegador (Ctrl+P)."""
-    q = dados["qualidade"]
+def gerar_relatorio_html(d) -> str:
+    """Relatorio completo (Sprints 1 a 4) em uma pagina HTML, pronta para
+    apresentar ou imprimir em PDF pelo navegador (Ctrl+P)."""
+    q, a, mut, m = d["qualidade"], d["analise"], d["mutacao"], d["analise"]["metricas"]
+    cob, crit = a["cobertura"], a["criterios"]
+    ok, total = d["validacao_resumo"]
     achados = "".join(
         f"<li><b>{html.escape(ACHADOS[cod][0])}</b> ({len(ids)} casos: {', '.join(ids)}). "
         f"{html.escape(ACHADOS[cod][1])}</li>" for cod, ids in q["achados"].items()
@@ -738,11 +450,16 @@ def gerar_relatorio_html(dados) -> str:
     referencias = "".join(f"<li>{html.escape(ref)}<br><small>{html.escape(uso)}</small></li>"
                           for ref, uso in REFERENCIAS)
     especificacao = "".join(f"<li>{html.escape(regra)}</li>" for regra in ESPECIFICACAO)
-    parecer = (f"<h2>Parecer do Gemini ({html.escape(dados['parecer_modelo'])})</h2>"
-               f"<pre class='parecer'>{html.escape(dados['parecer'])}</pre>") if dados.get("parecer") else ""
+    parecer = (f"<h2>Parecer do Gemini ({html.escape(d['parecer_modelo'])})</h2>"
+               f"<pre class='parecer'>{html.escape(d['parecer'])}</pre>") if d.get("parecer") else ""
+    dot = json.dumps(motor.grafo_em_dot(a["grafo"], set(a["nos_cobertos"]), set(a["arestas_cobertas"]))
+                     ).replace("</", "<\\/")
 
     def tabela(df):
         return df.to_html(index=False, border=0, classes="t", escape=True)
+
+    def kpi(valor, rotulo):
+        return f"<div class='kpi'><b>{valor}</b><span>{rotulo}</span></div>"
 
     return f"""<!doctype html><html lang="pt-BR"><head><meta charset="utf-8">
 <title>Relatório de teste — CAD0001</title>
@@ -750,54 +467,87 @@ def gerar_relatorio_html(dados) -> str:
  body {{font-family:'Segoe UI',system-ui,sans-serif; color:#1b2a3d; margin:2.2rem auto; max-width:1000px; padding:0 1.2rem; line-height:1.5;}}
  h1,h2 {{font-family:'Cascadia Mono',Consolas,monospace; letter-spacing:-.01em;}}
  h1 {{font-size:1.7rem; margin-bottom:.2rem;}} h2 {{font-size:1.15rem; margin-top:2rem; border-top:2px solid #1b2a3d; padding-top:.6rem;}}
+ h3 {{font-size:1rem; margin:1.2rem 0 .3rem;}}
  .meta {{color:#52606f; margin-top:0;}}
  .kpis {{display:flex; flex-wrap:wrap; gap:.8rem; margin:1.2rem 0;}}
- .kpi {{border:1px solid #c9d1da; border-radius:6px; padding:.6rem .9rem; min-width:150px;}}
+ .kpi {{border:1px solid #c9d1da; border-radius:6px; padding:.6rem .9rem; min-width:130px;}}
  .kpi b {{display:block; font-size:1.5rem;}} .kpi span {{color:#52606f; font-size:.85rem;}}
- table.t {{border-collapse:collapse; width:100%; font-size:.86rem; margin:.6rem 0;}}
+ .destaque {{border-left:4px solid #1f4e79; background:#edf1f5; padding:.8rem 1rem; border-radius:0 6px 6px 0;}}
+ table.t {{border-collapse:collapse; width:100%; font-size:.84rem; margin:.6rem 0;}}
  table.t th, table.t td {{border-bottom:1px solid #d5dbe2; padding:.35rem .5rem; text-align:left;}}
  table.t th {{background:#edf1f5;}} table.t td {{white-space:nowrap;}} table.t td:last-child {{white-space:normal;}}
- small {{color:#52606f;}} li {{margin-bottom:.35rem;}}
+ small, .nota {{color:#52606f;}} li {{margin-bottom:.35rem;}}
+ #gfc {{text-align:center; margin:1rem 0;}} #gfc svg {{max-width:100%; height:auto;}}
  pre.parecer {{white-space:pre-wrap; font-family:inherit; background:#f4f6f8; padding:1rem; border-radius:6px;}}
  @media print {{ body {{margin:0; max-width:none;}} h2 {{break-after:avoid;}} tr {{break-inside:avoid;}} }}
 </style></head><body>
-<h1>Relatório de teste funcional — CAD0001</h1>
-<p class="meta">Função {FUNCAO_ALVO}, teste de caixa-preta (PCE e AVL). Teste de Software I, Prof. Frank Piffer, Sprint 1.<br>
+<h1>Relatório de teste — CAD0001</h1>
+<p class="meta">Função {FUNCAO_ALVO}: caixa-preta, caixa-branca, fluxo de dados e mutação. Teste de Software I, Prof. Frank Piffer.<br>
 Gerado em {datetime.now().strftime("%d/%m/%Y %H:%M")} pelo TestingStudio Web</p>
 
-<h2>1. Qualidade do conjunto de testes</h2>
-<div class="kpis">
- <div class="kpi"><b>{q['total']}</b><span>casos executados</span></div>
- <div class="kpi"><b>{q['aprovados']}</b><span>aprovados</span></div>
- <div class="kpi"><b>{q['reprovados']}</b><span>reprovados</span></div>
- <div class="kpi"><b>{q['classes'][0]} de {q['classes'][1]}</b><span>classes de equivalência cobertas</span></div>
- <div class="kpi"><b>{q['pontos'][0]} de {q['pontos'][1]}</b><span>pontos de fronteira cobertos</span></div>
- <div class="kpi"><b>{len(q['achados'])}</b><span>tipos de defeito revelados</span></div>
-</div>
-<h2>2. Achados</h2><ul>{achados}</ul>
+<p class="destaque">{html.escape(d['achado'])}</p>
 
-<h2>3. Objeto de teste e origem dos dados</h2>
-{tabela(dados['origem'])}
-<h2>4. Especificação usada como oráculo</h2><ol>{especificacao}</ol>
+<h2>1. Objeto de teste e origem dos dados</h2>
+{tabela(d['origem'])}
 
-<h2>5. Particionamento em classes de equivalência (PCE)</h2>
-{tabela(dados['pce'])}
+<h2>2. Sprint 1: caixa-preta (PCE e AVL)</h2>
+<div class="kpis">{kpi(q['total'], 'casos executados')}{kpi(q['aprovados'], 'aprovados')}{kpi(q['reprovados'], 'reprovados')}
+{kpi(f"{q['classes'][0]} de {q['classes'][1]}", 'classes de equivalência cobertas')}{kpi(f"{q['pontos'][0]} de {q['pontos'][1]}", 'pontos de fronteira cobertos')}{kpi(len(q['achados']), 'tipos de defeito revelados')}</div>
+<h3>Achados</h3><ul>{achados}</ul>
+<h3>Especificação usada como oráculo</h3><ol>{especificacao}</ol>
+<h3>Particionamento em classes de equivalência</h3>
+{tabela(d['pce'])}
+<h3>Análise do valor limite e Épsilon</h3>
+<p>{html.escape(d['justificativa'])}</p>
+{tabela(d['pontos'])}
+<h3>Casos de teste executados</h3>
+{tabela(d['casos'])}
 
-<h2>6. Análise do valor limite (AVL) e Épsilon</h2>
-<p>{html.escape(dados['justificativa'])}</p>
-{tabela(dados['pontos'])}
+<h2>3. Sprint 2: caixa-branca (GFC e McCabe)</h2>
+<div class="kpis">{kpi(m['N'], 'nós (N)')}{kpi(m['E'], 'arestas (E)')}{kpi(m['P'], 'nós predicativos (P)')}{kpi(m['R'], 'regiões (R)')}{kpi(m['V'], 'complexidade V(G)')}</div>
+<ul>
+ <li>Método 1, topológico: V(G) = E − N + 2 = {m['E']} − {m['N']} + 2 = <b>{m['v_topologico']}</b></li>
+ <li>Método 2, lógico: V(G) = P + 1 = {m['P']} + 1 = <b>{m['v_logico']}</b></li>
+ <li>Método 3, espacial: V(G) = R = {m['regioes_internas']} internas + 1 externa = <b>{m['v_espacial']}</b></li>
+</ul>
+<div id="gfc"><p class="nota">O desenho do grafo aparece quando o relatório é aberto com internet. A tabela de nós abaixo descreve o mesmo grafo.</p></div>
+{tabela(d['nos'])}
+<h3>Cobertura estrutural</h3>
+<div class="kpis">{kpi(porcento(cob['Todos-Nós']), f"Todos-Nós ({cob['Todos-Nós'][0]} de {cob['Todos-Nós'][1]})")}{kpi(porcento(cob['Todas-Arestas']), f"Todas-Arestas ({cob['Todas-Arestas'][0]} de {cob['Todas-Arestas'][1]})")}{kpi(porcento(cob['Todos-Caminhos']), f"Todos-Caminhos ({cob['Todos-Caminhos'][0]} de {cob['Todos-Caminhos'][1]})")}</div>
+<h3>O que cada caso percorre</h3>
+{tabela(d['execucoes'])}
+<h3>Caminhos completos</h3>
+{tabela(d['caminhos'])}
 
-<h2>7. Casos de teste executados</h2>
-{tabela(dados['casos'])}
+<h2>4. Sprint 3: fluxo de dados</h2>
+<div class="kpis">{''.join(kpi(porcento(par), f"{nome} ({par[0]} de {par[1]})") for nome, par in crit.items())}</div>
+{tabela(d['variaveis'])}
+<h3>Pares Def-Uso</h3>
+{tabela(d['pares'])}
+
+<h2>5. Sprint 3: teste de mutação</h2>
+<div class="kpis">{kpi(mut['Mt'], 'mutantes gerados (Mt)')}{kpi(mut['Md'], 'mortos (Md)')}{kpi(mut['vivos'], 'vivos')}{kpi(mut['Me'], 'equivalentes (Me)')}{kpi(texto_ms(mut), 'escore de mutação (MS)')}</div>
+<p>MS = Md ÷ (Mt − Me) × 100 = {mut['Md']} ÷ ({mut['Mt']} − {mut['Me']}) × 100 = <b>{texto_ms(mut)}</b></p>
+{tabela(d['mutantes'])}
+
+<h2>6. Sprint 4: validação da ferramenta</h2>
+<p>{ok} de {total} verificações conferem com os gabaritos dos slides das aulas.</p>
+{tabela(d['validacao'])}
 {parecer}
 <h2>Fontes</h2><ol>{referencias}</ol>
 <p><small>Método: o TestingStudio interpreta em Python a lógica da função 4GL carregada
-(IF, LET, RETURN, comparações e aritmética). Não é o compilador Informix.</small></p>
+(IF, WHILE, LET, RETURN, comparações e aritmética). Não é o compilador Informix.</small></p>
+<script src="https://cdn.jsdelivr.net/npm/@viz-js/viz@3.31.0/dist/viz-global.js"></script>
+<script>
+ if (window.Viz) {{ Viz.instance().then(function (viz) {{
+   var alvo = document.getElementById("gfc"); alvo.innerHTML = ""; alvo.appendChild(viz.renderSVGElement({dot}));
+ }}); }}
+</script>
 </body></html>"""
 
 
 # ==========================================================================
-# PASSO 6 - Gemini: teste da chave e parecer
+# PASSO 4 - Gemini: teste da chave e parecer
 # ==========================================================================
 LIMITE_DE_PARECERES = 10     # por visita, quando a chave e a do servidor (protege a sua cota)
 
@@ -880,28 +630,17 @@ def testar_chave(api_key: str, modelo: str) -> dict:
                 "mensagem": sem_chave(f"Não foi possível testar a chave: {erro}", api_key)}
 
 
-def montar_prompt(fonte_funcao, dados) -> str:
-    q = dados["qualidade"]
+def _dados_para_o_gemini(fonte_funcao, d) -> str:
+    """Bloco de dados comum aos dois pedidos (parecer e fala do pitch)."""
+    q, a, mut, m = d["qualidade"], d["analise"], d["mutacao"], d["analise"]["metricas"]
+    cob, crit = a["cobertura"], a["criterios"]
+    ok, total = d["validacao_resumo"]
     achados = "\n".join(f"- {ACHADOS[c][0]}: casos {', '.join(ids)}" for c, ids in q["achados"].items()) \
         or "- nenhum"
-    referencias = "\n".join(f"- {ref}" for ref, _ in REFERENCIAS)
     regras = "\n".join(f"{i}. {r}" for i, r in enumerate(ESPECIFICACAO, 1))
-    return f"""Você é um auditor de teste de software. Escreva, em português do Brasil, um parecer
-de teste funcional (caixa-preta) da função {FUNCAO_ALVO} do programa CAD0001, com foco na
-QUALIDADE DO PRODUTO DE TESTE (adequação e cobertura do conjunto de casos) e nos defeitos revelados.
-
-Estrutura do parecer:
-1. Resumo executivo (3 a 5 linhas).
-2. Classes de equivalência: tabela com classes válidas e inválidas de cada parâmetro.
-3. Análise do valor limite: justifique o Épsilon e comente os pontos On, Off, Interior e Exterior.
-4. Qualidade do conjunto de testes: cobertura de classes e de fronteiras, pontos fortes e lacunas.
-5. Defeitos revelados e correção sugerida no fonte.
-6. Próximos testes recomendados.
-
-Use somente os dados abaixo, que já foram calculados pela ferramenta. Ao citar literatura,
-use apenas as referências listadas e não invente citações literais nem números de página.
-
-<especificacao>
+    referencias = "\n".join(f"- {ref}" for ref, _ in REFERENCIAS)
+    vivos = d["mutantes"][d["mutantes"]["Estado"] == "Vivo"]
+    return f"""<especificacao>
 {regras}
 </especificacao>
 
@@ -909,22 +648,44 @@ use apenas as referências listadas e não invente citações literais nem núme
 {fonte_funcao}
 </funcao_sob_teste>
 
-<epsilon>{dados['justificativa']}</epsilon>
+<epsilon>{d['justificativa']}</epsilon>
 
-<indicadores>
+<caixa_preta>
 casos executados: {q['total']} | aprovados: {q['aprovados']} | reprovados: {q['reprovados']}
 classes de equivalência cobertas: {q['classes'][0]} de {q['classes'][1]}
 pontos de fronteira cobertos: {q['pontos'][0]} de {q['pontos'][1]}
 achados:
 {achados}
-</indicadores>
+</caixa_preta>
 
-<classes_de_equivalencia_csv>
-{dados['pce'].to_csv(index=False)}
-</classes_de_equivalencia_csv>
+<caixa_branca>
+N = {m['N']} | E = {m['E']} | P = {m['P']} | R = {m['R']}
+V(G) = E - N + 2 = {m['v_topologico']} | V(G) = P + 1 = {m['v_logico']} | V(G) = R = {m['v_espacial']}
+Todos-Nós: {cob['Todos-Nós'][0]} de {cob['Todos-Nós'][1]} | Todas-Arestas: {cob['Todas-Arestas'][0]} de {cob['Todas-Arestas'][1]} | caminhos completos: {cob['Todos-Caminhos'][0]} de {cob['Todos-Caminhos'][1]}
+nos_csv:
+{d['nos'].to_csv(index=False)}
+caminhos_csv:
+{d['caminhos'].to_csv(index=False)}
+</caixa_branca>
+
+<fluxo_de_dados>
+{' | '.join(f"{nome}: {par[0]} de {par[1]}" for nome, par in crit.items())}
+variaveis_csv:
+{d['variaveis'].to_csv(index=False)}
+</fluxo_de_dados>
+
+<mutacao>
+Mt = {mut['Mt']} | Md = {mut['Md']} | Me = {mut['Me']} | MS = {texto_ms(mut)}
+mutantes_vivos_csv:
+{vivos.to_csv(index=False) if len(vivos) else 'nenhum'}
+</mutacao>
+
+<validacao_da_ferramenta>{ok} de {total} verificações conferem com os gabaritos das aulas</validacao_da_ferramenta>
+
+<achado_central>{d['achado']}</achado_central>
 
 <casos_de_teste_csv>
-{dados['casos'].to_csv(index=False)}
+{d['casos'].to_csv(index=False)}
 </casos_de_teste_csv>
 
 <referencias>
@@ -932,15 +693,454 @@ achados:
 </referencias>"""
 
 
+def montar_prompt(fonte_funcao, d) -> str:
+    return f"""Você é um auditor de teste de software. Escreva, em português do Brasil, um parecer
+de teste da função {FUNCAO_ALVO} do programa CAD0001, com foco na QUALIDADE DO PRODUTO DE TESTE
+(adequação e cobertura do conjunto de casos) e nos defeitos revelados.
+
+Estrutura do parecer:
+1. Resumo executivo (3 a 5 linhas).
+2. Caixa-preta: classes de equivalência, valor limite e justificativa do Épsilon.
+3. Caixa-branca: nós, arestas, V(G) pelos três métodos e cobertura de nós, arestas e caminhos.
+4. Fluxo de dados e mutação: pares Def-Uso cobertos, escore de mutação e mutantes vivos.
+5. O que as três técnicas dizem em conjunto, defeitos revelados e correção sugerida no fonte.
+6. Próximos testes recomendados.
+
+Use somente os dados abaixo, que já foram calculados pela ferramenta. Ao citar literatura,
+use apenas as referências listadas e não invente citações literais nem números de página.
+
+{_dados_para_o_gemini(fonte_funcao, d)}"""
+
+
+def montar_prompt_pitch(fonte_funcao, d) -> str:
+    return f"""Você vai ajudar um estudante a apresentar um pitch de 5 minutos do TestingStudio Web,
+uma ferramenta web que audita o programa CAD0001 (4GL/Logix) com caixa-preta, caixa-branca,
+fluxo de dados e teste de mutação. O público é o professor e a turma de Teste de Software.
+
+Escreva, em português do Brasil, a FALA do pitch, em primeira pessoa e tom natural, dividida em:
+problema, solução, demonstração (o que mostrar em cada passo), evidências com os números,
+o achado principal e próximos passos. Marque o tempo sugerido de cada parte.
+Depois, liste 5 perguntas prováveis do professor com uma resposta curta para cada uma.
+
+Use somente os números abaixo. Não invente resultados, citações nem funcionalidades.
+
+{_dados_para_o_gemini(fonte_funcao, d)}"""
+
+
+# ==========================================================================
+# PASSO 5 - Sprints 2, 3 e 4: tabelas e paineis (os calculos estao em motor.py)
+# ==========================================================================
+@st.cache_data(show_spinner=False, max_entries=64)
+def analise_em_cache(parametros, corpo, linha, epsilon, casos, por_bloco, nome):
+    """Guarda o resultado da analise: a pagina e reexecutada a cada clique e
+    nao precisa refazer grafo, fluxo de dados e mutantes se nada mudou."""
+    return motor.analisar(list(parametros), corpo, linha, epsilon, list(casos), por_bloco, nome)
+
+
+@st.cache_data(show_spinner=False)
+def validacao_em_cache():
+    return motor.validar_exemplos()
+
+
+def texto_entrada(entrada) -> str:
+    return "(" + "; ".join(formato_br(v) for v in entrada) + ")"
+
+
+def texto_caminho(nos) -> str:
+    return "-".join(str(n) for n in nos) if nos else "sem execução"
+
+
+def porcento(par) -> str:
+    feito, total = par
+    return "sem itens" if not total else f"{round(100 * feito / total)}%"
+
+
+def como_cobrir(sugestao, sondagens: int) -> str:
+    if sugestao is None:
+        return f"Nenhuma das {sondagens} entradas de sondagem alcança: possivelmente infactível"
+    return f"Testar com {texto_entrada(sugestao)}"
+
+
+def tabela_nos(a) -> pd.DataFrame:
+    grafo, linhas = a["grafo"], []
+    for no in grafo["nos"].values():
+        tipo = {"decisao": "Predicativo", "comando": "Comando", "saida": "Saída"}[no["tipo"]]
+        marcas = [m for m, vale in (("entrada", no["id"] == grafo["entrada"]),
+                                    ("saída", no["id"] == grafo["saida"] and no["tipo"] != "saida"),
+                                    ("inacessível", no["id"] in grafo["inacessiveis"])) if vale]
+        destinos = [f"{b} ({r})" if r else str(b) for x, b, r in grafo["arestas"] if x == no["id"]]
+        linhas.append({"Nó": no["id"], "Tipo": tipo + (f" ({', '.join(marcas)})" if marcas else ""),
+                       "Linhas do fonte": ", ".join(map(str, no["linhas"])) or "fim",
+                       "Comandos": "; ".join(no["texto"]), "Vai para": ", ".join(destinos) or "fim"})
+    return pd.DataFrame(linhas)
+
+
+def tabela_execucoes(a) -> pd.DataFrame:
+    m, linhas = a["metricas"], []
+    for x in a["execucoes"]:
+        linha = {"Caso": x["caso"]}
+        for nome, valor in zip(a["parametros"], x["entrada"]):
+            linha[nome] = formato_br(valor)
+        linha["Caminho executado"] = texto_caminho(x["nos"])
+        linha["Nós percorridos"] = f"{x['nos_distintos']} de {m['N']}"
+        linha["Arestas percorridas"] = f"{x['arestas_distintas']} de {m['E']}"
+        linha["Retorno"] = "erro" if x["erro"] else formato_br(x["valor"])
+        linhas.append(linha)
+    return pd.DataFrame(linhas)
+
+
+def tabela_caminhos(a) -> pd.DataFrame:
+    return pd.DataFrame([{
+        "Caminho completo": texto_caminho(c["nos"]),
+        "Conjunto básico": "Sim" if c["basico"] else "",
+        "Coberto por": ", ".join(c["casos"]) if c["casos"] else "nenhum caso",
+        "Como cobrir": "" if c["casos"] else como_cobrir(c["sugestao"], a["sondagens"]),
+    } for c in a["caminhos"]])
+
+
+def tabela_variaveis(a) -> pd.DataFrame:
+    """Mesmo formato do slide de pares DU: variavel, no de definicao, nos c-uso, arestas p-uso."""
+    arestas = a["grafo"]["arestas"]
+    return pd.DataFrame([{
+        "Variável": variavel,
+        "Nó de definição (d)": ", ".join(map(str, linha["defs"])) or "nenhum",
+        "Nós c-uso": ", ".join(map(str, linha["c_usos"])) or "nenhum",
+        "Arestas p-uso": ", ".join(f"({arestas[i][0]},{arestas[i][1]})" for i in linha["p_usos"]) or "nenhuma",
+    } for variavel, linha in a["fluxo_tabela"].items()])
+
+
+def tabela_pares(a) -> pd.DataFrame:
+    linhas = []
+    for p in a["pares"]:
+        if p["tipo"] == "c":
+            uso = f"nó {p['uso']}"
+        else:
+            uso = f"aresta ({p['uso'][0]},{p['uso'][1]})" + (f" {p['rotulo']}" if p["rotulo"] else "")
+        linhas.append({"Variável": p["variavel"], "Definição (nó)": p["no_def"], "Uso": uso,
+                       "Tipo": "c-uso" if p["tipo"] == "c" else "p-uso",
+                       "Coberto por": ", ".join(p["casos"]) if p["casos"] else "nenhum caso",
+                       "Como cobrir": "" if p["casos"] else como_cobrir(p["sugestao"], a["sondagens"])})
+    return pd.DataFrame(linhas)
+
+
+def tabela_mutantes(a) -> pd.DataFrame:
+    linhas = []
+    for m in a["mutantes"]:
+        if m["estado"] == "Morto":
+            analise = ""
+        elif m["provavel_equivalente"]:
+            analise = f"Provável equivalente: nenhuma das {a['sondagens']} entradas de sondagem distingue"
+        else:
+            analise = f"Mata com {texto_entrada(m['sugestao'])}"
+        linhas.append({"Mutante": m["id"], "Operador": m["operador"], "Linha": m["linha"],
+                       "Original": m["original"], "Alterado": m["mutado"], "Estado": m["estado"],
+                       "Morto por": m["morto_por"], "Análise do mutante vivo": analise})
+    return pd.DataFrame(linhas)
+
+
+def resumo_mutacao(a, equivalentes=()) -> dict:
+    """Mt, Md, Me e o escore MS = Md / (Mt - Me). 'equivalentes' sao os ids
+    dos mutantes vivos que o analista marcou como equivalentes."""
+    total = len(a["mutantes"])
+    mortos = sum(1 for m in a["mutantes"] if m["estado"] == "Morto")
+    me = sum(1 for m in a["mutantes"] if m["estado"] == "Vivo" and m["id"] in equivalentes)
+    return {"Mt": total, "Md": mortos, "Me": me, "vivos": total - mortos,
+            "MS": motor.escore_de_mutacao(mortos, total, me)}
+
+
+def texto_ms(resumo) -> str:
+    return "sem mutantes" if resumo["MS"] is None else f"{resumo['MS']:.1f}%".replace(".", ",")
+
+
+def painel_caixa_branca(a, chave: str) -> None:
+    """Sprint 2: grafo, contagens, McCabe pelos tres metodos e cobertura."""
+    m, grafo = a["metricas"], a["grafo"]
+    k = st.columns(5)
+    k[0].metric("Nós (N)", m["N"], border=True, help="Blocos de comandos do grafo.")
+    k[1].metric("Arestas (E)", m["E"], border=True, help="Desvios de fluxo entre os nós.")
+    k[2].metric("Predicativos (P)", m["P"], border=True, help="Nós de decisão (IF, WHILE), com duas saídas.")
+    k[3].metric("Regiões (R)", m["R"], border=True,
+                help=f"{m['regioes_internas']} regiões internas mais a região externa.")
+    k[4].metric("V(G)", m["V"], border=True, help="Complexidade ciclomática de McCabe.")
+
+    st.markdown(
+        f"- **Método 1, topológico:** V(G) = E − N + 2 = {m['E']} − {m['N']} + 2 = **{m['v_topologico']}**\n"
+        f"- **Método 2, lógico:** V(G) = P + 1 = {m['P']} + 1 = **{m['v_logico']}**\n"
+        f"- **Método 3, espacial:** V(G) = R = {m['regioes_internas']} internas + 1 externa = **{m['v_espacial']}**")
+    if m["coincidem"]:
+        st.success(f"Os três métodos coincidem: V(G) = {m['V']}. O conjunto básico tem {m['V']} caminhos "
+                   f"independentes, então são necessários no mínimo {m['V']} casos de teste.",
+                   icon=":material/check_circle:")
+    else:
+        st.warning("Os três métodos não coincidem. Isso acontece quando o grafo tem nós inacessíveis "
+                   "ou mais de um componente. Revise o fluxo do código.", icon=":material/warning:")
+    if m["condicoes_simples"] > m["P"]:
+        st.caption(f"Há predicado composto (AND/OR): são {m['condicoes_simples']} condições simples em "
+                   f"{m['P']} nós predicativos. Contando cada condição, a complexidade seria {m['v_condicoes']}.")
+    if grafo["inacessiveis"]:
+        st.warning(f"Nó(s) inacessível(is): {', '.join(map(str, grafo['inacessiveis']))}. "
+                   "Nenhum caminho chega a eles a partir da entrada (código morto).", icon=":material/block:")
+
+    st.subheader("Grafo de fluxo de controle (GFC)")
+    esquerda, direita = st.columns([2, 3])
+    with esquerda:
+        st.graphviz_chart(motor.grafo_em_dot(grafo, set(a["nos_cobertos"]), set(a["arestas_cobertas"])))
+        st.caption("Losango: nó predicativo. Círculo duplo: saída. V e F: desvio verdadeiro e falso. "
+                   "Tracejado laranja: não coberto pela suíte.")
+    with direita:
+        st.dataframe(tabela_nos(a), hide_index=True, width="stretch")
+        st.caption("Blocos indivisíveis: comandos em sequência, sem desvio, formam um único nó."
+                   if grafo["por_bloco"] else "Um nó para cada comando executável.")
+
+    st.subheader("Cobertura estrutural da suíte")
+    c = st.columns(3)
+    for coluna, nome, ajuda in zip(c, ("Todos-Nós", "Todas-Arestas", "Todos-Caminhos"), (
+            "Cada nó executado pelo menos uma vez.", "Cada desvio (verdadeiro e falso) percorrido.",
+            "Caminhos completos, com cada laço percorrido no máximo uma vez.")):
+        feito, total = a["cobertura"][nome]
+        coluna.metric(f"{nome}: {feito} de {total}", porcento((feito, total)), border=True, help=ajuda)
+    if a["tem_laco"]:
+        st.caption("Com laço, a quantidade real de caminhos não tem limite; a lista considera cada laço "
+                   "percorrido zero ou uma vez.")
+
+    st.markdown("**O que cada caso de teste percorre**")
+    st.dataframe(tabela_execucoes(a), hide_index=True, width="stretch")
+    st.markdown("**Caminhos completos do grafo**")
+    st.dataframe(tabela_caminhos(a), hide_index=True, width="stretch")
+    faltam = [x for x in a["arestas"] if not x["coberta"]]
+    if faltam:
+        st.markdown("**Arestas ainda não cobertas**")
+        st.dataframe(pd.DataFrame([{
+            "Aresta": f"({x['de']},{x['para']})" + (f" {x['rotulo']}" if x["rotulo"] else ""),
+            "Como cobrir": como_cobrir(x["sugestao"], a["sondagens"])} for x in faltam]),
+            hide_index=True, width="stretch")
+
+
+def painel_fluxo(a, chave: str) -> None:
+    """Sprint 3, parte 1: definicoes, usos e pares Def-Uso."""
+    c = st.columns(4)
+    ajudas = {"Todas-Definições": "Cada definição chega a pelo menos um uso.",
+              "Todos-c-Usos": "Cada par definição e uso computacional (em um nó).",
+              "Todos-p-Usos": "Cada par definição e uso predicativo (em uma aresta).",
+              "Todos-Usos": "Todos os pares Def-Uso: c-usos e p-usos."}
+    for coluna, (nome, par) in zip(c, a["criterios"].items()):
+        coluna.metric(f"{nome}: {par[0]} de {par[1]}", porcento(par), border=True, help=ajudas[nome])
+    st.markdown("**Definições e usos de cada variável**")
+    st.dataframe(tabela_variaveis(a), hide_index=True, width="stretch")
+    st.caption("d: nó onde a variável recebe valor (parâmetros são definidos no nó de entrada). "
+               "c-uso: uso em cálculo ou retorno, associado a um nó. "
+               "p-uso: uso em decisão, associado às arestas que saem do nó.")
+    st.markdown("**Pares Def-Uso (caminho livre de definição entre d e o uso)**")
+    st.dataframe(tabela_pares(a), hide_index=True, width="stretch")
+    if a["uso_sem_definicao"]:
+        st.warning("Uso sem definição que o alcance: " + ", ".join(
+            f"{v} (linha {linha})" for v, linha in a["uso_sem_definicao"]) +
+            ". A variável chega NULL a esse ponto.", icon=":material/warning:")
+    if a["definicao_sem_uso"]:
+        st.info("Definição que nenhum uso aproveita: " + ", ".join(
+            f"{v} (nó {no})" for v, no in a["definicao_sem_uso"]) + ".", icon=":material/info:")
+
+
+def painel_mutacao(a, chave: str) -> dict:
+    """Sprint 3, parte 2: mutantes, estados e escore de mutacao. Devolve o resumo."""
+    topo = st.container()
+    tabela = tabela_mutantes(a)
+    if tabela.empty:
+        st.info("Esta função não tem operador, comparação ou variável para mutar.", icon=":material/info:")
+        return resumo_mutacao(a)
+    st.markdown("**Mutantes gerados**")
+    tabela.insert(6, "Equivalente", False)
+    editado = st.data_editor(
+        tabela, key=f"{chave}_mutantes", hide_index=True, width="stretch",
+        disabled=[c for c in tabela.columns if c != "Equivalente"],
+        column_config={"Equivalente": st.column_config.CheckboxColumn(
+            "Equivalente", help="Marque o mutante vivo que você analisou e concluiu que se comporta "
+                                "igual ao original para qualquer entrada.")})
+    st.caption("Morto: algum caso deu resultado diferente do programa original. Vivo: todos os casos deram "
+               "o mesmo resultado. Decidir se um mutante vivo é equivalente é tarefa do analista; "
+               "a marcação só conta para mutantes vivos.")
+    marcados = set(editado.loc[editado["Equivalente"], "Mutante"])
+    r = resumo_mutacao(a, marcados)
+
+    with topo:
+        k = st.columns(5)
+        k[0].metric("Gerados (Mt)", r["Mt"], border=True)
+        k[1].metric("Mortos (Md)", r["Md"], border=True)
+        k[2].metric("Vivos", r["vivos"], border=True)
+        k[3].metric("Equivalentes (Me)", r["Me"], border=True)
+        k[4].metric("Escore (MS)", texto_ms(r), border=True)
+        st.markdown(f"MS = Md ÷ (Mt − Me) × 100 = {r['Md']} ÷ ({r['Mt']} − {r['Me']}) × 100 = **{texto_ms(r)}**")
+        vivos = [m for m in a["mutantes"] if m["estado"] == "Vivo"]
+        provaveis = [m for m in vivos if m["provavel_equivalente"]]
+        mataveis = [m for m in vivos if not m["provavel_equivalente"]]
+        if not vivos:
+            st.success("A suíte matou todos os mutantes.", icon=":material/check_circle:")
+        if mataveis:
+            st.warning(f"{len(mataveis)} mutante(s) vivo(s) podem ser mortos com um caso novo: "
+                       f"{', '.join(m['id'] for m in mataveis)}. A tabela indica uma entrada para cada um.",
+                       icon=":material/science:")
+        if provaveis:
+            st.info(f"{len(provaveis)} mutante(s) vivo(s) parecem equivalentes: "
+                    f"{', '.join(m['id'] for m in provaveis)}. Se a análise confirmar, marque a coluna "
+                    "Equivalente e o escore é recalculado.", icon=":material/balance:")
+        por_operador = []
+        for operador, descricao in motor.OPERADORES.items():
+            do_operador = [m for m in a["mutantes"] if m["operador"] == operador]
+            if do_operador:
+                mortos = sum(1 for m in do_operador if m["estado"] == "Morto")
+                por_operador.append({"Operador": operador, "O que faz": descricao,
+                                     "Gerados": len(do_operador), "Mortos": mortos,
+                                     "Vivos": len(do_operador) - mortos})
+        st.dataframe(pd.DataFrame(por_operador), hide_index=True, width="stretch")
+    return r
+
+
+def tabela_validacao(linhas) -> pd.DataFrame:
+    return pd.DataFrame([{"Exemplo": l["exemplo"], "Origem": l["aula"], "Medida": l["medida"],
+                          "Gabarito do slide": l["esperado"], "Ferramenta": l["obtido"],
+                          "Resultado": "✓ Confere" if l["confere"] else "✕ Diverge"} for l in linhas])
+
+
+def achado_central(q, a, mut) -> str:
+    """Frase que liga as tres tecnicas, calculada a partir dos resultados."""
+    nos, arestas = a["cobertura"]["Todos-Nós"], a["cobertura"]["Todas-Arestas"]
+    estrutural_total = nos[0] == nos[1] and arestas[0] == arestas[1]
+    if q["reprovados"] and estrutural_total:
+        return (f"A caixa-branca cobriu 100% dos nós e das arestas e o escore de mutação ficou em "
+                f"{texto_ms(mut)}, e mesmo assim a caixa-preta reprovou {q['reprovados']} casos. "
+                "O motivo é um requisito que não foi escrito no código: teste estrutural e mutação só "
+                "enxergam o código que existe, e requisito omitido só aparece no teste funcional. "
+                "É o que a aula de 21/09 chama de ilusão do teste estrutural.")
+    if q["reprovados"]:
+        return (f"A caixa-preta reprovou {q['reprovados']} casos e a cobertura estrutural ainda não é "
+                f"total (nós: {porcento(nos)}, arestas: {porcento(arestas)}). Há defeito a corrigir e "
+                "código ainda não exercitado.")
+    if estrutural_total:
+        return (f"As técnicas concordam: nenhum caso reprovado na caixa-preta, 100% dos nós e das "
+                f"arestas cobertos e escore de mutação de {texto_ms(mut)}.")
+    return (f"Nenhum caso reprovado na caixa-preta, mas a cobertura estrutural não é total "
+            f"(nós: {porcento(nos)}, arestas: {porcento(arestas)}): falta exercitar parte do código.")
+
+
+def roteiro_do_pitch(d) -> str:
+    """Roteiro de apresentacao em Markdown, com os numeros desta auditoria."""
+    q, a, mut, m = d["qualidade"], d["analise"], d["mutacao"], d["analise"]["metricas"]
+    ok, total = d["validacao_resumo"]
+    cob = a["cobertura"]
+    return f"""## Roteiro do pitch (cerca de 5 minutos)
+
+**1. O problema (30 s)**
+Testar tudo é impossível, e testar "mais ou menos" deixa o defeito passar na fronteira.
+Em sistema legado como o Logix, o teste costuma ser manual e sem medida de quanto foi coberto.
+
+**2. A solução (30 s)**
+O TestingStudio Web lê o fonte 4GL, executa a função e aplica as três famílias de técnicas da disciplina:
+caixa-preta, caixa-branca e teste baseado em defeitos. Para cada uma, mostra o resultado e a medida de cobertura.
+
+**3. Demonstração (2 min)**
+1. Anexar o `{d['arquivo']}` e mostrar o fonte na tela.
+2. Sprint 1: classes de equivalência, valor limite com ε = {formato_br(d['epsilon'])} e a matriz de cobertura.
+3. Sprint 2: o grafo com N = {m['N']}, E = {m['E']}, P = {m['P']}, R = {m['R']} e V(G) = {m['V']} pelos três métodos.
+4. Sprint 3: pares Def-Uso e mutantes, com o escore de mutação.
+5. Trocar um valor na aba de testes extras ou editar o fonte e ver tudo recalcular.
+
+**4. Evidências (1 min)**
+
+| Técnica | Resultado desta auditoria |
+|---|---|
+| Caixa-preta | {q['total']} casos, {q['aprovados']} aprovados, {q['reprovados']} reprovados; classes {q['classes'][0]}/{q['classes'][1]}; fronteiras {q['pontos'][0]}/{q['pontos'][1]} |
+| Caixa-branca | Todos-Nós {porcento(cob['Todos-Nós'])}; Todas-Arestas {porcento(cob['Todas-Arestas'])}; caminhos {cob['Todos-Caminhos'][0]} de {cob['Todos-Caminhos'][1]} |
+| Fluxo de dados | Todos-Usos: {a['criterios']['Todos-Usos'][0]} de {a['criterios']['Todos-Usos'][1]} pares Def-Uso |
+| Mutação | Mt = {mut['Mt']}, Md = {mut['Md']}, Me = {mut['Me']}, MS = {texto_ms(mut)} |
+| Validação da ferramenta | {ok} de {total} verificações conferem com os gabaritos dos slides |
+
+**5. O achado (30 s)**
+{d['achado']}
+
+**6. Limites e próximos passos (30 s)**
+O interpretador entende DEFINE, IF, WHILE, LET e RETURN; não é o compilador Informix e não acessa banco.
+Próximos passos: FOR e CASE, chamadas entre funções (teste de integração) e geração automática dos casos que faltam.
+"""
+
+
+GRANULARIDADES = ["Blocos indivisíveis (definição formal)", "Um nó por comando"]
+MODELO_DE_EXERCICIO = """FUNCTION minha_funcao(a, b)
+    DEFINE a, b, diferenca DECIMAL(12,2)
+    IF a > b THEN
+        LET diferenca = a - b
+    ELSE
+        LET diferenca = b - a
+    END IF
+    RETURN diferenca
+END FUNCTION
+"""
+
+
+@st.cache_data(show_spinner=False, max_entries=64)
+def analise_do_laboratorio(codigo, casos, por_bloco):
+    return motor.analisar_fonte(codigo, list(casos), por_bloco)
+
+
+def laboratorio() -> None:
+    """Sprint 4: o mesmo motor aplicado a exemplos das aulas ou a um codigo colado."""
+    opcoes = {f"{e['titulo']} ({e['aula']})": e for e in motor.EXEMPLOS}
+    escolha = st.selectbox("Exercício", list(opcoes) + ["Colar o meu código"], key="lab_escolha")
+    exemplo = opcoes.get(escolha)
+    chave = exemplo["chave"] if exemplo else "proprio"
+    codigo = st.text_area("Código em 4GL (DEFINE, IF, WHILE, LET, RETURN)",
+                          value=exemplo["fonte"] if exemplo else MODELO_DE_EXERCICIO,
+                          height=250, key=f"lab_codigo_{chave}")
+    funcao = motor.localizar_funcao(codigo)
+    if funcao is None:
+        st.error("Não encontrei 'FUNCTION nome(...) ... END FUNCTION' no texto.")
+        return
+    nomes = funcao["parametros"]
+    por_bloco = st.radio("Como contar os nós", GRANULARIDADES, horizontal=True, key=f"lab_nos_{chave}",
+                         index=0 if exemplo is None or exemplo["por_bloco"] else 1) == GRANULARIDADES[0]
+
+    base = exemplo["casos"] if exemplo else [("T1", (5, 3)), ("T2", (3, 5))]
+    linhas = [{"_caso": rotulo, **{n: (None if v is None else float(v)) for n, v in zip(nomes, entrada)}}
+              for rotulo, entrada in base if len(entrada) == len(nomes)]
+    inicial = pd.DataFrame(linhas or [{"_caso": "T1", **{n: None for n in nomes}}])
+    st.markdown("**Casos de teste** (edite, apague ou acrescente linhas; célula vazia envia NULL)")
+    editado = st.data_editor(
+        inicial, num_rows="dynamic", hide_index=True, width="stretch",
+        key=f"lab_casos_{chave}_{'_'.join(nomes)}",
+        column_config={"_caso": st.column_config.TextColumn("Caso"),
+                       **{n: st.column_config.NumberColumn(n, format="%.2f") for n in nomes}})
+    casos = []
+    for _, linha in editado.iterrows():
+        rotulo = linha["_caso"] if isinstance(linha["_caso"], str) and linha["_caso"].strip() else f"T{len(casos) + 1}"
+        casos.append((rotulo, tuple(None if pd.isna(linha[n]) else float(linha[n]) for n in nomes)))
+    if not casos:
+        st.info("Inclua pelo menos um caso de teste.", icon=":material/add:")
+        return
+    try:
+        a = analise_do_laboratorio(codigo, tuple(casos), por_bloco)
+    except motor.Erro4GL as problema:
+        st.error(f"Não consegui interpretar a função: {problema}. "
+                 "O interpretador entende DEFINE, IF/THEN/ELSE, WHILE, LET e RETURN.")
+        return
+    if exemplo and exemplo.get("observacao"):
+        st.caption(exemplo["observacao"])
+    aba_cb, aba_fd, aba_mu = st.tabs(["Caixa-branca", "Fluxo de dados", "Mutação"])
+    with aba_cb:
+        painel_caixa_branca(a, f"lab_{chave}")
+    with aba_fd:
+        painel_fluxo(a, f"lab_{chave}")
+    with aba_mu:
+        painel_mutacao(a, f"lab_{chave}")
+
+
 # ==========================================================================
 # INTERFACE WEB (Streamlit)
 # ==========================================================================
-st.set_page_config(page_title="TestingStudio Web - Sprint 1", layout="wide")
+st.set_page_config(page_title="TestingStudio Web", layout="wide")
 st.html(ESTILO)
 
 st.title("TestingStudio Web")
-st.html("<p class='ts-sub'>Auditoria de caixa-preta do programa CAD0001: classes de equivalência "
-        "e análise do valor limite, com os testes executados sobre o fonte que você anexar.</p>"
+st.html("<p class='ts-sub'>Auditoria de teste do programa CAD0001: caixa-preta, caixa-branca, fluxo de "
+        "dados e mutação, com os testes executados sobre o fonte que você anexar.</p>"
         "<div class='ts-regua'></div>")
 
 # ---- Barra lateral: chave do Gemini ---------------------------------------
@@ -960,7 +1160,7 @@ with st.sidebar:
 
     situacao = st.session_state.get("chave_status")
     if not api_key:
-        st.caption("Sem chave, a auditoria funciona normalmente; só o parecer do Gemini fica desligado.")
+        st.caption("Sem chave, a auditoria funciona normalmente; só os textos do Gemini ficam desligados.")
     elif not situacao or situacao["chave"] != marca_da(api_key):
         st.info("Chave ainda não testada.", icon=":material/help:")
     elif situacao["ok"]:
@@ -969,7 +1169,7 @@ with st.sidebar:
         st.error(situacao["mensagem"], icon=":material/error:")
 
     st.divider()
-    st.caption("Teste de Software I, Prof. Frank Piffer. Sprint 1: caixa-preta (PCE e AVL).")
+    st.caption("Teste de Software I, Prof. Frank Piffer. Sprints 1 a 4.")
 
 chave_ok = bool(api_key and situacao and situacao["chave"] == marca_da(api_key) and situacao["ok"])
 
@@ -1012,27 +1212,28 @@ if alterado:
                "não sobre o arquivo original.", icon=":material/edit:")
 
 # ---- 2. Unidade sob teste --------------------------------------------------
-funcao = extrair_funcao(fonte, FUNCAO_ALVO)
+funcao = motor.localizar_funcao(fonte, FUNCAO_ALVO)
 if funcao is None:
     st.error(f"Não encontrei 'FUNCTION {FUNCAO_ALVO}(...) ... END FUNCTION' neste fonte.")
     st.stop()
-parametros, corpo = funcao
-tipo = calcular_epsilon(corpo)
+parametros, corpo, linha_funcao = funcao["parametros"], funcao["corpo"], funcao["linha"]
+tipo = motor.tipo_decimal(corpo)
 if tipo is None or len(parametros) != 3:
     st.error("A função precisa ter 3 parâmetros e uma declaração DECIMAL(precisão, escala).")
     st.stop()
 precisao, escala, epsilon, maximo = tipo
 try:
-    programa = compilar_funcao(parametros, corpo)
-except Erro4GL as problema:
+    programa = motor.compilar_funcao(parametros, corpo, linha_funcao, FUNCAO_ALVO)
+except motor.Erro4GL as problema:
     st.error(f"Não consegui interpretar a função: {problema}. "
-             "O interpretador entende DEFINE, IF/THEN/ELSE, LET e RETURN.")
+             "O interpretador entende DEFINE, IF/THEN/ELSE, WHILE, LET e RETURN.")
     st.stop()
 
 st.header("2. Unidade sob teste e Épsilon")
 texto_funcao = f"FUNCTION {FUNCAO_ALVO}({', '.join(parametros)}){corpo}END FUNCTION"
-with st.expander(f"Função {FUNCAO_ALVO} extraída do fonte"):
-    st.code(texto_funcao, language="sql", line_numbers=True)
+with st.expander(f"Função {FUNCAO_ALVO} extraída do fonte (com o número da linha no arquivo)"):
+    st.code("\n".join(f"{numero:>4}  {linha}" for numero, linha in
+                      enumerate(texto_funcao.split("\n"), start=linha_funcao)), language=None)
 
 c1, c2, c3 = st.columns(3)
 c1.metric("Tipo dos parâmetros", f"DECIMAL({precisao},{escala})", border=True)
@@ -1066,17 +1267,22 @@ def para_decimal(numero: float) -> Decimal:
 nominal, interior, exterior = para_decimal(nominal), para_decimal(interior), para_decimal(exterior)
 
 # ---- 3. Auditoria ----------------------------------------------------------
-st.header("3. Auditoria de caixa-preta")
-aba_resumo, aba_rel, aba_graf, aba_extra, aba_ia, aba_fontes = st.tabs(
-    ["Resumo da qualidade", "Relatório (PCE & AVL)", "Gráfico de fronteira",
-     "Testes extras", "Parecer do Gemini", "Fontes"])
+st.header("3. Auditoria")
+sprint1, sprint2, sprint3, sprint4, aba_ia, aba_fontes = st.tabs(
+    ["Sprint 1: caixa-preta", "Sprint 2: caixa-branca", "Sprint 3: fluxo de dados e mutação",
+     "Sprint 4: validação e pitch", "Parecer do Gemini", "Fontes"])
 
-# A aba de testes extras e montada primeiro porque os indicadores do resumo
-# precisam das linhas digitadas nela.
+# ======================= SPRINT 1: CAIXA-PRETA ==============================
+with sprint1:
+    aba_resumo, aba_rel, aba_graf, aba_extra = st.tabs(
+        ["Resumo da qualidade", "Relatório (PCE & AVL)", "Gráfico de fronteira", "Testes extras"])
+
+# A aba de testes extras e montada primeiro porque todos os indicadores
+# (das quatro sprints) usam as linhas digitadas nela.
 with aba_extra:
     st.write("Monte seus próprios casos: troque os valores, apague ou acrescente linhas. "
-             "Deixe uma célula vazia para enviar NULL. Os resultados e os indicadores "
-             "das outras abas são recalculados na hora.")
+             "Deixe uma célula vazia para enviar NULL. Os resultados de todas as sprints "
+             "são recalculados na hora.")
     sugestoes = pd.DataFrame([
         {"descricao": "Primeiro valor válido acima da fronteira (0,00 + ε)", "p1": passo, "p2": 10.0, "p3": 10.0},
         {"descricao": "Todos os parâmetros negativos", "p1": -passo, "p2": -passo, "p3": -passo},
@@ -1105,15 +1311,9 @@ df_origem = pd.DataFrame([
     {"Dado": "Tamanho", "Valor": f"{st.session_state['fonte_bytes']} bytes, {len(original.splitlines())} linhas"},
     {"Dado": "SHA-256 do arquivo", "Valor": st.session_state["fonte_sha"]},
     {"Dado": "Fonte editado na página", "Valor": "Sim" if alterado else "Não"},
-    {"Dado": "Unidade sob teste", "Valor": f"{FUNCAO_ALVO}({', '.join(parametros)})"},
+    {"Dado": "Unidade sob teste", "Valor": f"{FUNCAO_ALVO}({', '.join(parametros)}), a partir da linha {linha_funcao}"},
     {"Dado": "Tipo de dado e Épsilon", "Valor": f"DECIMAL({precisao},{escala}); ε = {formato_br(epsilon)}"},
 ])
-pacote = {"qualidade": qualidade, "casos": df_casos, "pce": df_pce, "pontos": df_pontos_tela,
-          "origem": df_origem, "justificativa": justificativa}
-assinatura = hashlib.sha256((texto_funcao + df_casos.to_csv()).encode()).hexdigest()
-parecer = st.session_state.get("parecer")
-if parecer:
-    pacote.update(parecer=parecer["texto"], parecer_modelo=parecer["modelo"])
 
 with aba_extra:
     if casos_extras:
@@ -1148,13 +1348,7 @@ with aba_resumo:
     st.html(html_matriz(casos_base, parametros))
     st.caption("Cada célula é um caso: um parâmetro recebe o valor da coluna e os outros dois ficam em "
                f"{formato_br(nominal)}. Os testes extras entram nos indicadores acima.")
-
-    b1, b2, _ = st.columns([1.6, 1.6, 3])
-    b1.download_button("Baixar relatório (HTML)", gerar_relatorio_html(pacote),
-                       file_name="relatorio_cad0001.html", mime="text/html", width="stretch",
-                       help="Abra no navegador para apresentar ou use Ctrl+P para salvar em PDF.")
-    b2.download_button("Baixar casos de teste (CSV)", df_casos.to_csv(index=False, sep=";").encode("utf-8-sig"),
-                       file_name="casos_de_teste_cad0001.csv", mime="text/csv", width="stretch")
+    lugar_dos_downloads = st.container()
 
 with aba_rel:
     st.subheader("Especificação usada como oráculo")
@@ -1172,8 +1366,103 @@ with aba_graf:
     st.altair_chart(grafico_fronteira(df_pontos, epsilon), width="stretch")
     st.dataframe(df_pontos_tela, hide_index=True, width="stretch")
 
+# ======================= SPRINT 2: CAIXA-BRANCA =============================
+with sprint2:
+    st.write("A caixa-branca olha a estrutura do código. A função vira um grafo de fluxo de controle, "
+             "e os mesmos casos de teste da Sprint 1 são executados para medir o que cada um percorre.")
+    por_bloco = st.radio("Como contar os nós", GRANULARIDADES, horizontal=True, key="cad_granularidade",
+                         help="A definição formal junta em um nó os comandos em sequência, sem desvio. "
+                              "Alguns slides desenham um nó para cada comando.") == GRANULARIDADES[0]
+
+casos_do_motor = tuple((c["id"], tuple(c["entradas"])) for c in casos)
+try:
+    analise = analise_em_cache(tuple(parametros), corpo, linha_funcao, epsilon, casos_do_motor,
+                               por_bloco, FUNCAO_ALVO)
+except motor.Erro4GL as problema:
+    st.error(f"Não foi possível fazer a análise estrutural: {problema}.")
+    st.stop()
+
+with sprint2:
+    painel_caixa_branca(analise, "cad")
+
+# ======================= SPRINT 3: FLUXO DE DADOS E MUTACAO =================
+with sprint3:
+    aba_fluxo, aba_mutacao = st.tabs(["Fluxo de dados (pares Def-Uso)", "Teste de mutação"])
+    with aba_fluxo:
+        st.write("O teste de fluxo de dados acompanha cada variável: onde recebe valor e onde esse valor é usado. "
+                 "Os números de nó e de aresta são os do grafo da Sprint 2.")
+        painel_fluxo(analise, "cad")
+    with aba_mutacao:
+        st.write("O teste de mutação avalia a suíte, não o código: cada mutante é a função com um defeito "
+                 "proposital, e uma boa suíte percebe a diferença.")
+        mutacao = painel_mutacao(analise, "cad")
+
+# ======================= SPRINT 4: VALIDACAO E PITCH ========================
+linhas_validacao = validacao_em_cache()
+validacao_resumo = (sum(1 for l in linhas_validacao if l["confere"]), len(linhas_validacao))
+achado = achado_central(qualidade, analise, mutacao)
+df_mutantes = tabela_mutantes(analise)
+pacote = {
+    "qualidade": qualidade, "casos": df_casos, "pce": df_pce, "pontos": df_pontos_tela,
+    "origem": df_origem, "justificativa": justificativa,
+    "analise": analise, "mutacao": mutacao, "achado": achado,
+    "nos": tabela_nos(analise), "execucoes": tabela_execucoes(analise), "caminhos": tabela_caminhos(analise),
+    "variaveis": tabela_variaveis(analise), "pares": tabela_pares(analise), "mutantes": df_mutantes,
+    "validacao": tabela_validacao(linhas_validacao), "validacao_resumo": validacao_resumo,
+    "arquivo": st.session_state["fonte_nome"], "epsilon": epsilon,
+}
+assinatura = hashlib.sha256((texto_funcao + df_casos.to_csv() + str(por_bloco) + str(mutacao)).encode()).hexdigest()
+parecer = st.session_state.get("parecer")
+if parecer:
+    pacote.update(parecer=parecer["texto"], parecer_modelo=parecer["modelo"])
+relatorio_html = gerar_relatorio_html(pacote)
+roteiro = roteiro_do_pitch(pacote)
+
+with sprint4:
+    aba_validacao, aba_laboratorio, aba_pitch = st.tabs(
+        ["Validação com gabaritos das aulas", "Laboratório de exercícios", "Roteiro do pitch"])
+    with aba_validacao:
+        st.write("Antes de confiar na ferramenta, ela mesma é testada: cada exemplo dos slides das aulas, "
+                 "que tem resposta conhecida, é analisado e o resultado é comparado com o gabarito.")
+        v1, v2 = st.columns([1, 3])
+        v1.metric("Verificações que conferem", f"{validacao_resumo[0]} de {validacao_resumo[1]}", border=True)
+        if validacao_resumo[0] == validacao_resumo[1]:
+            v2.success("O motor reproduz todos os gabaritos: contagens do grafo, V(G), caminhos, pares "
+                       "Def-Uso, estados dos mutantes e escore de mutação.", icon=":material/verified:")
+        else:
+            v2.error("Há divergência em relação a algum gabarito. Veja as linhas marcadas na tabela.",
+                     icon=":material/error:")
+        st.dataframe(pacote["validacao"], hide_index=True, width="stretch", height="content")
+        for exemplo in motor.EXEMPLOS:
+            if exemplo.get("observacao"):
+                st.caption(f"{exemplo['titulo']}: {exemplo['observacao']}")
+    with aba_laboratorio:
+        st.write("Use o mesmo motor para conferir exercícios e gabaritos: escolha um exemplo das aulas "
+                 "ou cole a sua função, monte os casos e veja grafo, pares Def-Uso e mutantes.")
+        laboratorio()
+    with aba_pitch:
+        st.info(achado, icon=":material/lightbulb:")
+        st.markdown(roteiro)
+        p1, p2, _ = st.columns([1.6, 1.6, 3])
+        p1.download_button("Baixar relatório completo (HTML)", relatorio_html, key="baixar_relatorio_pitch",
+                           file_name="relatorio_cad0001.html", mime="text/html", width="stretch")
+        p2.download_button("Baixar roteiro (Markdown)", roteiro, key="baixar_roteiro",
+                           file_name="roteiro_pitch.md", mime="text/markdown", width="stretch")
+
+with lugar_dos_downloads:
+    b1, b2, _ = st.columns([1.6, 1.6, 3])
+    b1.download_button("Baixar relatório completo (HTML)", relatorio_html, key="baixar_relatorio_resumo",
+                       file_name="relatorio_cad0001.html", mime="text/html", width="stretch",
+                       help="Reúne as quatro sprints. Abra no navegador para apresentar ou use Ctrl+P para salvar em PDF.")
+    b2.download_button("Baixar casos de teste (CSV)", df_casos.to_csv(index=False, sep=";").encode("utf-8-sig"),
+                       file_name="casos_de_teste_cad0001.csv", mime="text/csv", width="stretch")
+
+# ======================= GEMINI =============================================
 with aba_ia:
-    st.write("As tabelas e os indicadores são calculados pelo Python. Aqui o Gemini redige um parecer a partir deles.")
+    st.write("Todos os números são calculados pelo Python. Aqui o Gemini só redige um texto a partir deles.")
+    pedido = st.radio("O que o Gemini deve escrever", ["Parecer de auditoria", "Fala para o pitch"],
+                      horizontal=True, key="pedido_gemini")
+    guarda = "parecer" if pedido == "Parecer de auditoria" else "fala"
     if not api_key:
         st.info("Cole a chave da API na barra lateral para ligar esta parte.", icon=":material/key:")
     elif not chave_ok:
@@ -1182,29 +1471,32 @@ with aba_ia:
     usos = st.session_state.get("usos_gemini", 0)
     no_limite = bool(chave_servidor) and usos >= LIMITE_DE_PARECERES
     if no_limite:
-        st.info(f"Limite de {LIMITE_DE_PARECERES} pareceres por visita atingido. "
+        st.info(f"Limite de {LIMITE_DE_PARECERES} textos por visita atingido. "
                 "Recarregue a página para continuar.", icon=":material/hourglass:")
-    if st.button("Executar auditoria com Gemini", type="primary", disabled=not api_key or no_limite):
+    if st.button("Executar auditoria com Gemini" if guarda == "parecer" else "Escrever a fala com Gemini",
+                 type="primary", disabled=not api_key or no_limite):
         st.session_state["usos_gemini"] = usos + 1
         try:
-            with st.spinner("Gemini analisando classes e limites..."):
-                texto, usado = chamar_gemini(api_key, situacao["modelo"] if chave_ok else modelo,
-                                             montar_prompt(texto_funcao, pacote))
-            st.session_state["parecer"] = {"texto": texto, "modelo": usado, "assinatura": assinatura}
+            with st.spinner("Gemini escrevendo..."):
+                prompt = (montar_prompt if guarda == "parecer" else montar_prompt_pitch)(texto_funcao, pacote)
+                texto, usado = chamar_gemini(api_key, situacao["modelo"] if chave_ok else modelo, prompt)
+            st.session_state[guarda] = {"texto": texto, "modelo": usado, "assinatura": assinatura}
             st.session_state["chave_status"] = {"chave": marca_da(api_key), "ok": True, "modelo": usado,
                                                 "mensagem": f"Chave funcionando. O modelo {usado} respondeu."}
             st.rerun()
         except FalhaGemini as falha:
             st.error(str(falha), icon=":material/error:")
         except Exception as erro:
-            st.error(sem_chave(f"Não foi possível gerar o parecer: {erro}", api_key), icon=":material/error:")
-    if parecer:
-        if parecer["assinatura"] != assinatura:
-            st.warning("Este parecer foi gerado antes das últimas alterações no fonte ou nos casos. "
+            st.error(sem_chave(f"Não foi possível gerar o texto: {erro}", api_key), icon=":material/error:")
+    escrito = st.session_state.get(guarda)
+    if escrito:
+        if escrito["assinatura"] != assinatura:
+            st.warning("Este texto foi gerado antes das últimas alterações no fonte ou nos casos. "
                        "Execute de novo para atualizar.", icon=":material/history:")
-        st.caption(f"Parecer gerado pelo modelo {parecer['modelo']}.")
-        st.markdown(parecer["texto"])
+        st.caption(f"Texto gerado pelo modelo {escrito['modelo']}.")
+        st.markdown(escrito["texto"])
 
+# ======================= FONTES =============================================
 with aba_fontes:
     st.subheader("Referências")
     st.html("".join(f"<div class='ts-ref'><p>{html.escape(ref)}</p><p class='uso'>{html.escape(uso)}</p></div>"
@@ -1213,9 +1505,16 @@ with aba_fontes:
     st.dataframe(df_origem, hide_index=True, width="stretch")
     st.subheader("Como os resultados são obtidos")
     st.markdown(
-        "- **Esperado:** vem das quatro regras da especificação, sem olhar o código (caixa-preta).\n"
+        "- **Esperado (caixa-preta):** vem das quatro regras da especificação, sem olhar o código.\n"
         "- **Obtido:** o TestingStudio interpreta em Python a lógica da função carregada "
-        "(IF, LET, RETURN, comparações e aritmética) e a executa com as entradas de cada caso. "
+        "(IF, WHILE, LET, RETURN, comparações e aritmética) e a executa com as entradas de cada caso. "
         "Não é o compilador Informix.\n"
-        "- **Parecer do Gemini:** texto gerado por IA a partir dessas tabelas; os números vêm sempre do Python."
+        "- **Grafo e McCabe:** o grafo é montado a partir dos comandos da função; N, E e P são contados "
+        "nele e V(G) é calculado pelos três métodos.\n"
+        "- **Cobertura:** cada execução registra os comandos por onde passou; daí saem os nós, as arestas, "
+        "os caminhos e os pares Def-Uso exercitados.\n"
+        "- **Mutação:** cada mutante é executado com a mesma suíte e comparado com o programa original.\n"
+        f"- **Sugestões e itens possivelmente infactíveis:** vêm de {analise['sondagens']} entradas de sondagem "
+        "(combinações de valores típicos). São indícios para o analista, não provas.\n"
+        "- **Textos do Gemini:** gerados por IA a partir dessas tabelas; os números vêm sempre do Python."
     )
