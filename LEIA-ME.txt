@@ -1,4 +1,4 @@
-TestingStudio Web - Sprint 1 (Teste de Software I, Prof. Frank Piffer)
+TestingStudio Web - Sprints 1 a 4 (Teste de Software I, Prof. Frank Piffer)
 ======================================================================
 
 O QUE A PAGINA FAZ
@@ -15,7 +15,8 @@ ARQUIVOS DESTA PASTA
   motor.py                   Os calculos: interpretador de 4GL, grafo, McCabe,
                              fluxo de dados, mutantes e validacao.
   requirements.txt           Bibliotecas que o servidor instala ao publicar.
-  .streamlit/config.toml     Visual da pagina (cores e fontes).
+  .streamlit/config.toml     Visual da pagina: tema claro e escuro e fontes.
+  static/                    Fontes IBM Plex usadas pela pagina (6 arquivos).
   .gitignore                 Impede que a chave e arquivos gerados subam ao GitHub.
   cad0001_item_calculo.txt   Fonte do CAD0001 (arquivo de exemplo).
   iniciar.py                 Abre a pagina no navegador do seu computador.
@@ -27,7 +28,8 @@ PUBLICAR ONLINE (a chave do Gemini fica escondida no servidor)
   1. Crie uma conta em https://github.com e um repositorio novo
      (botao New, nome testingstudio-web, deixe Public, Create repository).
   2. No repositorio, clique em "uploading an existing file" e arraste
-     TODOS os arquivos desta pasta, inclusive a pasta .streamlit.
+     TODOS os arquivos desta pasta, inclusive as pastas .streamlit e
+     static (sem elas a pagina abre com cores e letras padrao).
      Nao arraste o TestingStudio.exe. Clique em Commit changes.
   3. Entre em https://share.streamlit.io com a conta do GitHub e clique
      em Create app, depois em "Yup, I have an app".
@@ -41,7 +43,8 @@ PUBLICAR ONLINE (a chave do Gemini fica escondida no servidor)
 
   Para ATUALIZAR uma pagina ja publicada: no repositorio do GitHub, clique
   em Add file, Upload files, arraste de novo os arquivos desta pasta
-  (principalmente app.py e motor.py) e clique em Commit changes. O Streamlit
+  (app.py, motor.py, .streamlit/config.toml e a pasta static) e clique
+  em Commit changes. O Streamlit
   republica sozinho em um ou dois minutos; o link continua o mesmo.
 
   O que o professor ve: a pagina completa, sem campo de chave. A barra
@@ -58,6 +61,11 @@ PUBLICAR ONLINE (a chave do Gemini fica escondida no servidor)
     em "Yes, get this app back up!" e espera um minuto.
   - Para trocar a chave depois: share.streamlit.io, menu do app, Settings,
     Secrets. Depois da avaliacao, apague a chave no Google AI Studio.
+
+MODO CLARO E ESCURO
+  A pagina segue o tema do computador. Para trocar na hora: menu de tres
+  pontos no canto superior direito, escolha Light (claro) ou Dark (escuro).
+  O laudo baixado em HTML tambem segue o tema; para PDF, abra-o e use Ctrl+P.
 
 PARA USAR NO SEU COMPUTADOR
   De dois cliques em Abrir_TestingStudio.bat.

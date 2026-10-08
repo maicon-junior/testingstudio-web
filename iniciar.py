@@ -6,25 +6,13 @@ Serve para duas coisas:
   - virar o executavel:      Gerar_Executavel.bat empacota este arquivo com o PyInstaller
 """
 
+import os
 import socket
 import sys
 import threading
 import time
 import webbrowser
 from pathlib import Path
-
-# Aparencia da pagina (tema do Streamlit).
-TEMA = {
-    "base": "light",
-    "primaryColor": "#1f4e79",
-    "backgroundColor": "#fafbfc",
-    "secondaryBackgroundColor": "#edf1f5",
-    "textColor": "#1b2a3d",
-    "font": "'Segoe UI', system-ui, sans-serif",
-    "headingFont": "'Cascadia Mono', Consolas, 'Courier New', monospace",
-    "baseRadius": "6px",
-}
-
 
 def pasta_do_app() -> Path:
     """No executavel, os arquivos ficam na pasta temporaria do PyInstaller."""
@@ -67,6 +55,9 @@ def main() -> None:
     print("=" * 62, flush=True)
     threading.Thread(target=abrir_navegador, args=(porta,), daemon=True).start()
 
+    # Roda a partir da pasta do app, para o Streamlit achar .streamlit/config.toml
+    # (cores do modo claro e escuro) e a pasta static/ (fontes tipograficas).
+    os.chdir(pasta_do_app())
     from streamlit.web import cli as stcli
 
     sys.argv = [
@@ -77,8 +68,7 @@ def main() -> None:
         "--server.address=localhost",          # so este computador acessa; evita aviso do firewall
         "--server.fileWatcherType=none",
         "--browser.gatherUsageStats=false",
-        "--client.toolbarMode=minimal",        # esconde o menu de desenvolvedor
-    ] + [f"--theme.{opcao}={valor}" for opcao, valor in TEMA.items()]
+    ]
     sys.exit(stcli.main())
 
 

@@ -10,7 +10,8 @@ datas, binaries, hiddenimports = collect_all("streamlit")
 datas += copy_metadata("streamlit")
 
 # Arquivos do projeto que vao dentro do executavel.
-datas += [("app.py", "."), ("motor.py", ".")]
+datas += [("app.py", "."), ("motor.py", "."), (".streamlit/config.toml", ".streamlit")]
+datas += [(os.path.join("static", nome), "static") for nome in os.listdir("static")]
 if os.path.exists("cad0001_item_calculo.txt"):
     datas += [("cad0001_item_calculo.txt", ".")]
 

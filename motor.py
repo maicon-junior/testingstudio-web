@@ -1003,8 +1003,8 @@ def grafo_em_dot(grafo, nos_cobertos=None, arestas_cobertas=None) -> str:
     circulo duplo = saida; tracejado = nao coberto pela suite."""
     cor, cor_falta = "#1f4e79", "#eb6834"
     linhas = ['digraph GFC {', '  rankdir=TB; bgcolor="transparent"; nodesep=0.5; ranksep=0.45;',
-              f'  node [fontname="Segoe UI, Arial, sans-serif", fontsize=12, color="{cor}", fontcolor="#1b2a3d", penwidth=1.6];',
-              f'  edge [fontname="Segoe UI, Arial, sans-serif", fontsize=10, color="{cor}", fontcolor="#1b2a3d", arrowsize=0.8];',
+              f'  node [fontname="IBM Plex Sans, Segoe UI, Arial, sans-serif", fontsize=12, color="{cor}", fontcolor="#1b2a3d", penwidth=1.6];',
+              f'  edge [fontname="IBM Plex Sans, Segoe UI, Arial, sans-serif", fontsize=10, color="{cor}", fontcolor="#1b2a3d", arrowsize=0.8];',
               '  inicio [shape=point, width=0.12, color="#1b2a3d"];',
               f'  inicio -> n{grafo["entrada"]};']
     for no in grafo["nos"].values():
@@ -1014,9 +1014,13 @@ def grafo_em_dot(grafo, nos_cobertos=None, arestas_cobertas=None) -> str:
         else:
             trecho = "fim"
         forma = "diamond" if no["tipo"] == "decisao" else ("doublecircle" if no["id"] == grafo["saida"] else "circle")
-        estilo = ""
+        estilos = ["filled"] if no["tipo"] == "decisao" else []
+        estilo = ', fillcolor="#e1eafa"' if no["tipo"] == "decisao" else ""
         if nos_cobertos is not None and no["id"] not in nos_cobertos:
-            estilo = f', style=dashed, color="{cor_falta}"'
+            estilos.append("dashed")
+            estilo += f', color="{cor_falta}"'
+        if estilos:
+            estilo += f', style="{",".join(estilos)}"'
         linhas.append(f'  n{no["id"]} [label=<<B>{no["id"]}</B><BR/><FONT POINT-SIZE="9">{trecho}</FONT>>, '
                       f'shape={forma}{estilo}];')
     for indice, (a, b, rotulo) in enumerate(grafo["arestas"]):
