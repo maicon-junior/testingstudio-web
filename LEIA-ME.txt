@@ -1,0 +1,58 @@
+TestingStudio Web - Sprint 1 (Teste de Software I, Prof. Frank Piffer)
+======================================================================
+
+ARQUIVOS DESTA PASTA
+  app.py                     A pagina (leitura do .txt, PCE, AVL, graficos, Gemini).
+  requirements.txt           Bibliotecas que o servidor instala ao publicar.
+  .streamlit/config.toml     Visual da pagina (cores e fontes).
+  .gitignore                 Impede que a chave e arquivos gerados subam ao GitHub.
+  cad0001_item_calculo.txt   Fonte do CAD0001 (arquivo de exemplo).
+  iniciar.py                 Abre a pagina no navegador do seu computador.
+  Abrir_TestingStudio.bat    Dois cliques para usar no seu computador.
+  Gerar_Executavel.bat       Dois cliques para criar o TestingStudio.exe.
+  TestingStudio.spec         Receita usada para montar o executavel.
+
+PUBLICAR ONLINE (a chave do Gemini fica escondida no servidor)
+  1. Crie uma conta em https://github.com e um repositorio novo
+     (botao New, nome testingstudio-web, deixe Public, Create repository).
+  2. No repositorio, clique em "uploading an existing file" e arraste
+     TODOS os arquivos desta pasta, inclusive a pasta .streamlit.
+     Nao arraste o TestingStudio.exe. Clique em Commit changes.
+  3. Entre em https://share.streamlit.io com a conta do GitHub e clique
+     em Create app, depois em "Yup, I have an app".
+  4. Escolha o repositorio, branch main e Main file path app.py.
+  5. Clique em Advanced settings e, no campo Secrets, cole esta linha
+     trocando pelo valor da sua chave (mantenha as aspas):
+         GEMINI_API_KEY = "cole-sua-chave-aqui"
+     Clique em Save e depois em Deploy.
+  6. Em alguns minutos a pagina abre. O endereco que aparece no navegador
+     e o link para enviar ao professor.
+
+  O que o professor ve: a pagina completa, sem campo de chave. A barra
+  lateral so informa que a chave esta guardada no servidor.
+
+  Cuidados:
+  - Nunca escreva a chave dentro do app.py nem em arquivo do repositorio.
+    Ela vai somente no campo Secrets do Streamlit.
+  - Com o repositorio publico, qualquer pessoa com o link usa o botao do
+    Gemini na sua cota (a chave continua escondida). A pagina limita a
+    10 pareceres por visita. Para restringir a pessoas convidadas, use o
+    botao Share da pagina publicada.
+  - Depois de 12 horas sem acesso a pagina dorme. Quem abrir o link clica
+    em "Yes, get this app back up!" e espera um minuto.
+  - Para trocar a chave depois: share.streamlit.io, menu do app, Settings,
+    Secrets. Depois da avaliacao, apague a chave no Google AI Studio.
+
+PARA USAR NO SEU COMPUTADOR
+  De dois cliques em Abrir_TestingStudio.bat.
+  A pagina abre sozinha no navegador. Para encerrar, feche a janela preta.
+  Aqui a chave e colada na barra lateral.
+
+EXECUTAVEL (alternativa ao link)
+  De dois cliques em Gerar_Executavel.bat e espere de 3 a 10 minutos.
+  O TestingStudio.exe aparece nesta pasta e tem mais de 100 MB: envie por
+  link do Google Drive. No executavel cada pessoa cola a propria chave.
+
+CHAVE DO GEMINI
+  Crie em https://aistudio.google.com (Create API Key). De preferencia,
+  crie uma chave so para esta entrega.
