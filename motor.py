@@ -30,19 +30,30 @@ class Erro4GL(Exception):
 # 1. INTERPRETADOR DE 4GL
 # ==========================================================================
 PALAVRAS = {"if", "then", "else", "end", "let", "return", "define", "while",
-            "and", "or", "not", "is", "null", "true", "false"}
+            "and", "or", "not", "is", "null", "true", "false",
+            "for", "to", "step", "case", "when", "otherwise", "initialize", "record"}
+# Comandos de tela e de tratamento de erro: nao mudam o resultado da funcao, entao
+# a linha inteira e ignorada (e listada no laudo).
+IGNORADOS = {"display", "message", "error", "sleep", "whenever"}
 # Comandos reconhecidos so para avisar que o interpretador nao os executa.
-NAO_EXECUTA = {"for", "foreach", "case", "when", "call", "display", "message", "select",
-               "insert", "update", "delete", "whenever", "goto", "exit", "continue", "function"}
+NAO_EXECUTA = {"foreach", "call", "select", "insert", "update", "delete", "goto", "exit",
+               "continue", "function", "prompt", "open", "fetch", "close", "run"}
 PADRAO_TOKEN = re.compile(
-    r"\s*(?:(\d+\.\d+|\d+|\.\d+)|([A-Za-z_][\w.]*)|(<=|>=|<>|!=|==|[-+*/()=<>,]))")
+    r"\s*(?:(\d+\.\d+|\d+|\.\d+)|([A-Za-z_][\w.]*)|(\"(?:[^\"\\]|\\.)*\"|'(?:[^'\\]|\\.)*')"
+    r"|(<=|>=|<>|!=|==|[-+*/()=<>,;\[\]]))")
+_COMENTARIO_OU_TEXTO = re.compile(r"(\"(?:[^\"\\\n]|\\.)*\"|'(?:[^'\\\n]|\\.)*')|\{.*?\}|(?:#|--)[^\n]*",
+                                  re.DOTALL)
+
+
+def sem_comentarios(codigo: str) -> str:
+    """Troca comentarios por espacos (mantendo as quebras de linha e o tamanho do texto).
+    Textos entre aspas ficam intactos, mesmo que tenham # dentro."""
+    return _COMENTARIO_OU_TEXTO.sub(lambda m: m.group(1) or re.sub(r"[^\n]", " ", m.group(0)), codigo)
 
 
 def tokenizar(codigo: str, linha_inicial: int = 1):
     """Quebra o texto em tokens (tipo, valor, linha do arquivo)."""
-    # Comentarios viram espacos, mas as quebras de linha ficam para manter a numeracao.
-    codigo = re.sub(r"\{.*?\}", lambda m: re.sub(r"[^\n]", " ", m.group(0)), codigo, flags=re.DOTALL)
-    codigo = re.sub(r"(#|--).*", " ", codigo)
+    codigo = sem_comentarios(codigo)
     tokens = []
     for numero, linha in enumerate(codigo.split("\n"), start=linha_inicial):
         pos = 0
@@ -53,12 +64,15 @@ def tokenizar(codigo: str, linha_inicial: int = 1):
                 if not resto:
                     break
                 raise Erro4GL(f"linha {numero}: símbolo não reconhecido perto de '{resto[:20]}'")
-            numero_txt, nome, operador = achado.groups()
+            numero_txt, nome, texto, operador = achado.groups()
             if numero_txt:
                 tokens.append(("num", Decimal(numero_txt), numero))
             elif nome:
                 nome = nome.lower()
-                tokens.append(("palavra" if nome in PALAVRAS or nome in NAO_EXECUTA else "nome", nome, numero))
+                reservada = nome in PALAVRAS or nome in NAO_EXECUTA or nome in IGNORADOS
+                tokens.append(("palavra" if reservada else "nome", nome, numero))
+            elif texto:
+                tokens.append(("str", texto[1:-1], numero))
             else:
                 tokens.append(("op", {"==": "=", "!=": "<>"}.get(operador, operador), numero))
             pos = achado.end()
@@ -77,6 +91,7 @@ class Analisador:
 
     def __init__(self, tokens):
         self.tokens, self.pos, self.declaradas, self.contador = tokens, 0, [], 0
+        self.tipos, self.ignorados = {}, []
 
     def atual(self):
         return self.tokens[self.pos] if self.pos < len(self.tokens) else ("fim", "", 0)
@@ -105,19 +120,130 @@ class Analisador:
         comandos = []
         while not self.e("fim") and not (fins and self.e("palavra", *fins)):
             comando = self.comando()
-            if comando:
+            if isinstance(comando, list):          # FOR e INITIALIZE viram mais de um comando
+                comandos += comando
+            elif comando:
                 comandos.append(comando)
         return comandos
+
+    def declaracao(self):
+        """DEFINE a, b DECIMAL(12,2), c INTEGER ... : guarda os nomes e o tipo de cada um."""
+        pendentes = []
+        while not self.e("fim") and not (self.e("palavra") and not self.e("palavra", "record")):
+            tipo, nome, _ = self.avancar()
+            if tipo == "palavra" and nome == "record":      # RECORD ... END RECORD: os campos nao entram
+                while not self.e("fim") and not (self.e("palavra", "end") and
+                                                 self.pos + 1 < len(self.tokens) and
+                                                 self.tokens[self.pos + 1][1] == "record"):
+                    self.avancar()
+                if not self.e("fim"):
+                    self.avancar()
+                    self.avancar()
+                pendentes = []
+                continue
+            if tipo != "nome":
+                continue
+            if nome == "like" and pendentes:              # LIKE tabela.coluna: tipo vem do banco
+                if self.e("nome"):
+                    self.avancar()
+                for variavel in pendentes:
+                    self.tipos[variavel] = ("like",)
+                pendentes = []
+                continue
+            if nome in TIPOS_4GL and pendentes:
+                numeros = []
+                if self.e("op", "("):
+                    self.avancar()
+                    while not self.e("fim") and not self.e("op", ")"):
+                        t, v, _ = self.avancar()
+                        if t == "num":
+                            numeros.append(int(v))
+                    self.avancar()
+                for variavel in pendentes:
+                    self.tipos[variavel] = (nome, *numeros)
+                pendentes = []
+            elif nome not in TIPOS_4GL:
+                self.declaradas.append(nome)
+                pendentes.append(nome)
+
+    def ignorar_linha(self):
+        _, valor, linha = self.avancar()
+        self.ignorados.append((linha, valor.upper()))
+        while not self.e("fim") and self.atual()[2] == linha:
+            self.avancar()
+        return None
+
+    def comando_for(self, linha):
+        """FOR i = a TO b [STEP s] ... END FOR  ==  LET i = a / WHILE i <= b ... LET i = i + s."""
+        self.avancar()
+        if not self.e("nome"):
+            raise Erro4GL(f"linha {linha}: FOR sem variável de controle")
+        variavel = self.avancar()[1]
+        self.exigir("op", "=")
+        inicio = self.expressao()
+        self.exigir("palavra", "to")
+        fim = self.expressao()
+        passo = ("num", Decimal(1))
+        if self.e("palavra", "step"):
+            self.avancar()
+            passo = self.expressao()
+        decrescente = passo[0] == "negativo" or (passo[0] == "num" and passo[1] < 0)
+        inicial = self.novo("let", linha, nome=variavel, expr=inicio)
+        laco = self.novo("while", linha, cond=("compara", ">=" if decrescente else "<=", ("var", variavel), fim),
+                         corpo=[], estilo="for")
+        corpo = self.bloco("end")
+        linha_fim = self.atual()[2]
+        self.exigir("palavra", "end")
+        self.exigir("palavra", "for")
+        laco["corpo"] = corpo + [self.novo("let", linha_fim, nome=variavel,
+                                           expr=("conta", "+", ("var", variavel), passo))]
+        return [inicial, laco]
+
+    def comando_case(self, linha):
+        """CASE [expr] WHEN ... OTHERWISE ... END CASE  ==  IF / ELSE IF / ELSE encadeados."""
+        self.avancar()
+        seletor = None if self.e("palavra", "when") else self.expressao()
+        ramos = []
+        while self.e("palavra", "when"):
+            linha_quando = self.avancar()[2]
+            valor = self.expressao()
+            condicao = valor if seletor is None else ("compara", "=", seletor, valor)
+            se = self.novo("if", linha_quando, cond=condicao, entao=[], senao=[], estilo="when")
+            se["entao"] = self.bloco("when", "otherwise", "end")
+            ramos.append(se)
+        if not ramos:
+            raise Erro4GL(f"linha {linha}: CASE sem WHEN")
+        if self.e("palavra", "otherwise"):
+            self.avancar()
+            ramos[-1]["senao"] = self.bloco("end")
+        self.exigir("palavra", "end")
+        self.exigir("palavra", "case")
+        for anterior, seguinte in zip(ramos, ramos[1:]):
+            anterior["senao"] = [seguinte]
+        return ramos[0]
 
     def comando(self):
         _, valor, linha = self.atual()
         if self.e("palavra", "define"):
             self.avancar()
-            while not self.e("fim") and not self.e("palavra"):
-                tipo, nome, _ = self.avancar()
-                if tipo == "nome":
-                    self.declaradas.append(nome)
+            self.declaracao()
             return None
+        if self.e("palavra", *IGNORADOS):
+            return self.ignorar_linha()
+        if self.e("palavra", "for"):
+            return self.comando_for(linha)
+        if self.e("palavra", "case"):
+            return self.comando_case(linha)
+        if self.e("palavra", "initialize"):
+            self.avancar()
+            nomes = []
+            while self.e("nome"):
+                nomes.append(self.avancar()[1])
+                if self.e("op", ","):
+                    self.avancar()
+            self.exigir("palavra", "to")
+            self.exigir("palavra", "null")
+            return [self.novo("let", linha, nome=n, expr=("nulo",)) for n in nomes]
         if self.e("palavra", "if"):
             self.avancar()
             condicao = self.expressao()
@@ -214,6 +340,9 @@ class Analisador:
         if tipo == "num":
             return ("num", valor)
         if tipo == "nome":
+            if self.e("op", "("):
+                raise Erro4GL(f"linha {linha}: chamada de função ('{valor}(...)') não é suportada; "
+                              "teste uma função por vez")
             return ("var", valor)
         if tipo == "palavra" and valor == "null":
             return ("nulo",)
@@ -223,6 +352,8 @@ class Analisador:
             no = self.expressao()
             self.exigir("op", ")")
             return no
+        if tipo == "str":
+            raise Erro4GL(f"linha {linha}: textos entre aspas não são suportados em contas e comparações")
         raise Erro4GL(f"linha {linha}: expressão inválida perto de '{valor}'")
 
 
@@ -270,9 +401,74 @@ def compilar_funcao(parametros, corpo: str, linha_inicial: int = 1, nome: str = 
             if candidato not in nomes:
                 nomes.append(candidato)
     atribuidas = {c["nome"] for c in todos_os_comandos(comandos) if c["t"] == "let"}
+    tipos = {v: info_do_tipo(*t) for v, t in analisador.tipos.items()}
     return {"nome": nome, "parametros": parametros, "comandos": comandos,
-            "variaveis": nomes,
+            "variaveis": nomes, "tipos": tipos, "ignorados": analisador.ignorados,
             "conhecidas": set(parametros) | set(analisador.declaradas) | atribuidas}
+
+
+# ---- tipos de dado ------------------------------------------------------------
+TIPOS_4GL = {"decimal", "dec", "numeric", "money", "integer", "int", "smallint", "float", "smallfloat",
+             "double", "real", "char", "character", "varchar", "nchar", "nvarchar", "date", "datetime",
+             "interval", "boolean", "text", "byte", "like", "serial", "bigint", "int8"}
+
+
+def info_do_tipo(tipo, *numeros):
+    """Escala, Epsilon e faixa de um tipo 4GL. Epsilon = menor variacao representavel."""
+    um = Decimal(1)
+    if tipo in ("decimal", "dec", "numeric", "money"):
+        precisao = numeros[0] if numeros else 16
+        escala = numeros[1] if len(numeros) > 1 else 2
+        nota = "" if len(numeros) > 1 else "escala não declarada; considerada com 2 casas"
+        epsilon = Decimal(10) ** -escala
+        maximo = Decimal(10) ** (precisao - escala) - epsilon
+        rotulo = f"{tipo.upper()}({precisao},{escala})" if len(numeros) > 1 else tipo.upper() + (
+            f"({precisao})" if numeros else "")
+        return {"rotulo": rotulo, "numerico": True, "escala": escala, "epsilon": epsilon,
+                "minimo": -maximo, "maximo": maximo, "nota": nota}
+    if tipo in ("integer", "int", "serial"):
+        limite = Decimal(2147483647)
+        return {"rotulo": "INTEGER", "numerico": True, "escala": 0, "epsilon": um,
+                "minimo": -limite, "maximo": limite, "nota": ""}
+    if tipo in ("bigint", "int8"):
+        limite = Decimal(9223372036854775807)
+        return {"rotulo": "BIGINT", "numerico": True, "escala": 0, "epsilon": um,
+                "minimo": -limite, "maximo": limite, "nota": ""}
+    if tipo == "smallint":
+        return {"rotulo": "SMALLINT", "numerico": True, "escala": 0, "epsilon": um,
+                "minimo": Decimal(-32767), "maximo": Decimal(32767), "nota": ""}
+    if tipo in ("float", "smallfloat", "double", "real"):
+        return {"rotulo": tipo.upper(), "numerico": True, "escala": 2, "epsilon": Decimal("0.01"),
+                "minimo": Decimal("-1E15"), "maximo": Decimal("1E15"),
+                "nota": "tipo de ponto flutuante; Epsilon considerado 0,01"}
+    if tipo == "like":
+        return {**TIPO_NAO_DECLARADO, "rotulo": "LIKE (coluna do banco)",
+                "nota": "tipo vem do banco de dados; considerado decimal com 2 casas"}
+    return {"rotulo": tipo.upper(), "numerico": False, "escala": None, "epsilon": None,
+            "minimo": None, "maximo": None, "nota": "tipo não numérico"}
+
+
+TIPO_NAO_DECLARADO = {"rotulo": "não declarado", "numerico": True, "escala": 2, "epsilon": Decimal("0.01"),
+                      "minimo": Decimal("-1E15"), "maximo": Decimal("1E15"),
+                      "nota": "tipo não declarado; considerado decimal com 2 casas"}
+
+
+def tipo_da_variavel(programa, nome):
+    return programa["tipos"].get(nome, TIPO_NAO_DECLARADO)
+
+
+def epsilon_do_resultado(programa):
+    """Escala do valor devolvido: a do tipo da variavel retornada (ou a mais fina dos parametros)."""
+    candidatos = []
+    for c in todos_os_comandos(programa["comandos"]):
+        if c["t"] == "return" and c["expr"] is not None and c["expr"][0] == "var":
+            info = programa["tipos"].get(c["expr"][1])
+            if info and info["numerico"]:
+                candidatos.append(info["epsilon"])
+    if not candidatos:
+        candidatos = [tipo_da_variavel(programa, p)["epsilon"] for p in programa["parametros"]
+                      if tipo_da_variavel(programa, p)["numerico"]]
+    return min(candidatos) if candidatos else EPSILON_PADRAO
 
 
 # ---- texto de expressoes e comandos (usado em tabelas, grafo e mutantes) ---
@@ -308,7 +504,8 @@ def texto_comando(c) -> str:
         return f"LET {c['nome']} = {texto_expr(c['expr'])}"
     if c["t"] == "return":
         return "RETURN" + (f" {texto_expr(c['expr'])}" if c["expr"] is not None else "")
-    return f"{c['t'].upper()} {texto_expr(c['cond'])}"
+    palavra = {"for": "FOR enquanto", "when": "WHEN"}.get(c.get("estilo"), c["t"].upper())
+    return f"{palavra} {texto_expr(c['cond'])}"
 
 
 # ---- execucao --------------------------------------------------------------
@@ -368,6 +565,7 @@ def executar_funcao(programa, entradas, epsilon=EPSILON_PADRAO, limite: int = 30
     cobertura de fluxo de dados."""
     ambiente = dict(zip(programa["parametros"], entradas))
     conhecidas, trilha, passos = programa["conhecidas"], [], [0]
+    escalas = {v: t["epsilon"] for v, t in programa.get("tipos", {}).items() if t["numerico"]}
 
     def rodar(comandos):
         for c in comandos:
@@ -377,8 +575,14 @@ def executar_funcao(programa, entradas, epsilon=EPSILON_PADRAO, limite: int = 30
             if c["t"] == "let":
                 trilha.append((c["id"], None))
                 valor = _avaliar(c["expr"], ambiente, conhecidas)
-                if isinstance(valor, Decimal):    # variavel DECIMAL(p,e) arredonda na escala
-                    valor = valor.quantize(epsilon, ROUND_HALF_UP)
+                if isinstance(valor, bool):
+                    valor = Decimal(int(valor))
+                if isinstance(valor, Decimal):    # a variavel arredonda na escala do proprio tipo
+                    info = escalas.get(c["nome"])
+                    try:
+                        valor = valor.quantize(info if info is not None else epsilon, ROUND_HALF_UP)
+                    except ArithmeticError:
+                        raise Erro4GL(f"linha {c['linha']}: valor grande demais para '{c['nome']}'")
                 ambiente[c["nome"]] = valor
             elif c["t"] == "return":
                 trilha.append((c["id"], None))
@@ -427,18 +631,29 @@ def assinatura(resultado):
 
 
 # ---- localizar funcoes no arquivo ------------------------------------------
+_FUNCAO = r"(?<![\w.])FUNCTION\s+({alvo})\s*\((.*?)\)(.*?)\bEND\s+FUNCTION\b"
+
+
+def listar_funcoes(fonte: str):
+    """Todas as funcoes do arquivo, na ordem: [{"nome", "parametros", "corpo", "linha"}].
+    A busca ignora comentarios, mas o corpo devolvido e o texto original."""
+    limpo = sem_comentarios(fonte)
+    funcoes = []
+    for achado in re.finditer(_FUNCAO.format(alvo=r"[A-Za-z_]\w*"), limpo, re.IGNORECASE | re.DOTALL):
+        funcoes.append({"nome": achado.group(1),
+                        "parametros": [p.strip().lower() for p in achado.group(2).split(",") if p.strip()],
+                        "corpo": fonte[achado.start(3):achado.end(3)],
+                        "linha": fonte.count("\n", 0, achado.start(3)) + 1})
+    return funcoes
+
+
 def localizar_funcao(fonte: str, nome: str = None):
     """Acha 'FUNCTION nome(params) ... END FUNCTION' (ou a primeira funcao, se
     nome for None). Devolve {"nome", "parametros", "corpo", "linha"} ou None."""
-    alvo = re.escape(nome) if nome else r"[A-Za-z_]\w*"
-    achado = re.search(rf"FUNCTION\s+({alvo})\s*\((.*?)\)(.*?)END\s+FUNCTION", fonte,
-                       re.IGNORECASE | re.DOTALL)
-    if not achado:
-        return None
-    return {"nome": achado.group(1),
-            "parametros": [p.strip().lower() for p in achado.group(2).split(",") if p.strip()],
-            "corpo": achado.group(3),
-            "linha": fonte.count("\n", 0, achado.start(3)) + 1}
+    for funcao in listar_funcoes(fonte):
+        if nome is None or funcao["nome"].lower() == nome.lower():
+            return funcao
+    return None
 
 
 def tipo_decimal(corpo: str):
@@ -1040,12 +1255,12 @@ def _para_decimais(entrada):
 
 
 def analisar_fonte(fonte, casos, por_bloco=True):
-    """Analisa a primeira funcao encontrada em um texto (usado nos exemplos e no laboratorio)."""
+    """Analisa a primeira funcao encontrada em um texto (usado nos testes do proprio motor)."""
     funcao = localizar_funcao(fonte)
     if funcao is None:
         raise Erro4GL("não encontrei 'FUNCTION nome(...) ... END FUNCTION' no texto")
-    tipo = tipo_decimal(funcao["corpo"])
-    epsilon = tipo[2] if tipo else EPSILON_PADRAO
+    programa = compilar_funcao(funcao["parametros"], funcao["corpo"], funcao["linha"], funcao["nome"])
+    epsilon = epsilon_do_resultado(programa)
     casos = [(rotulo, _para_decimais(entrada)) for rotulo, entrada in casos]
     return analisar(funcao["parametros"], funcao["corpo"], funcao["linha"], epsilon, casos,
                     por_bloco, funcao["nome"])

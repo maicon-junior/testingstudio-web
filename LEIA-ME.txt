@@ -2,12 +2,17 @@ TestingStudio Web - Sprints 1 a 4 (Teste de Software I, Prof. Frank Piffer)
 ======================================================================
 
 O QUE A PAGINA FAZ
-  Sprint 1  Caixa-preta: classes de equivalencia e valor limite com Epsilon.
+  Analisa QUALQUER arquivo .txt com codigo 4GL. O CAD0001 vem junto so como
+  exemplo. A pagina lista as funcoes do arquivo e testa uma por vez.
+
+  Sprint 1  Caixa-preta: classes de equivalencia e valor limite com Epsilon
+            (o Epsilon sai do tipo de cada parametro: DECIMAL, MONEY,
+            INTEGER, SMALLINT).
   Sprint 2  Caixa-branca: grafo de fluxo de controle, nos (N), arestas (E),
             predicativos (P), regioes (R), V(G) pelos tres metodos de McCabe
             e cobertura de nos, arestas e caminhos por caso de teste.
   Sprint 3  Fluxo de dados (pares Def-Uso) e teste de mutacao (escore MS).
-  Sprint 4  Validacao da propria suite do CAD0001 (oraculo, rastreabilidade,
+  Sprint 4  Validacao da propria suite de testes (oraculo, rastreabilidade,
             caminho feliz/fronteira/excecao, repetibilidade) e assercoes de
             teste de unidade, com download dos testes em Python (pytest).
   Apresentar  Roteiro do pitch e textos com o Gemini.
@@ -15,7 +20,9 @@ O QUE A PAGINA FAZ
 ARQUIVOS DESTA PASTA
   app.py                     A pagina (leitura do .txt, tabelas, graficos, Gemini).
   motor.py                   Os calculos: interpretador de 4GL, grafo, McCabe,
-                             fluxo de dados, mutantes e validacao.
+                             fluxo de dados e mutantes.
+  caixa_preta.py             Especificacao (oraculo), classes, fronteiras e
+                             geracao dos casos de teste.
   requirements.txt           Bibliotecas que o servidor instala ao publicar.
   .streamlit/config.toml     Visual da pagina: tema claro e escuro e fontes.
   static/                    Fontes IBM Plex usadas pela pagina (6 arquivos).
@@ -25,6 +32,19 @@ ARQUIVOS DESTA PASTA
   Abrir_TestingStudio.bat    Dois cliques para usar no seu computador.
   Gerar_Executavel.bat       Dois cliques para criar o TestingStudio.exe.
   TestingStudio.spec         Receita usada para montar o executavel.
+
+ANALISAR OUTRO PROGRAMA
+  1. Anexe o .txt. Na aba "Programa e especificacao", escolha a funcao.
+  2. Preencha a especificacao com o que diz o ENUNCIADO (nunca o codigo):
+     minimo e maximo validos de cada parametro, o que fazer com valor em
+     branco, a resposta para valor invalido e a formula do resultado.
+     Sem especificacao os testes rodam, mas nao ha como julgar as respostas.
+  3. Use "Salvar a especificacao (.json)" para guardar e, numa proxima vez,
+     "Carregar uma especificacao salva". Assim da para preparar antes.
+  O interpretador entende DEFINE, IF, CASE, WHILE, FOR, LET, INITIALIZE e
+  RETURN. DISPLAY, MESSAGE e ERROR sao ignorados. Funcoes que chamam outras
+  funcoes, usam banco de dados ou recebem texto (CHAR) ficam de fora, e a
+  pagina mostra o motivo.
 
 PUBLICAR ONLINE (a chave do Gemini fica escondida no servidor)
   1. Crie uma conta em https://github.com e um repositorio novo
@@ -45,7 +65,8 @@ PUBLICAR ONLINE (a chave do Gemini fica escondida no servidor)
 
   Para ATUALIZAR uma pagina ja publicada: no repositorio do GitHub, clique
   em Add file, Upload files, arraste de novo os arquivos desta pasta
-  (app.py, motor.py, .streamlit/config.toml e a pasta static) e clique
+  (app.py, motor.py, caixa_preta.py, .streamlit/config.toml e a pasta
+  static) e clique
   em Commit changes. O Streamlit
   republica sozinho em um ou dois minutos; o link continua o mesmo.
 
@@ -70,11 +91,11 @@ MODO CLARO E ESCURO
   O laudo baixado em HTML tambem segue o tema; para PDF, abra-o e use Ctrl+P.
 
 RODAR OS TESTES FORA DA PAGINA
-  Na aba Sprint 4, Assercoes, baixe o test_cad0001.py e salve nesta pasta
-  (junto do motor.py e do cad0001_item_calculo.txt). Depois, no terminal:
-      python test_cad0001.py
+  Na aba Sprint 4, Assercoes, baixe o test_<funcao>.py e salve nesta pasta
+  (junto do motor.py e do .txt analisado). Depois, no terminal:
+      python test_<funcao>.py
   ou, com o pytest instalado (pip install pytest):
-      python -m pytest -v test_cad0001.py
+      python -m pytest -v test_<funcao>.py
 
 PARA USAR NO SEU COMPUTADOR
   De dois cliques em Abrir_TestingStudio.bat.

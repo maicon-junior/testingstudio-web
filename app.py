@@ -1,5 +1,5 @@
 """
-TestingStudio - Laudo de qualidade de testes para programas Logix/4GL (CAD0001)
+TestingStudio - Laudo de qualidade de testes para programas Logix/4GL
 Teste de Software I, Univille, Prof. Frank Piffer
 
   Laudo de qualidade : visao para apresentar, em linguagem simples.
@@ -9,7 +9,9 @@ Teste de Software I, Univille, Prof. Frank Piffer
   Sprint 4           : validacao da propria suite (oraculo, rastreabilidade, assercoes) e pitch.
 
 Este arquivo cuida da PAGINA (leitura do .txt, laudo, tabelas, Gemini).
-Os calculos das Sprints 2 a 4 e o interpretador de 4GL ficam em motor.py.
+A caixa-preta (especificacao, oraculo, classes, fronteiras) fica em caixa_preta.py.
+O interpretador de 4GL e os calculos das Sprints 2 a 4 ficam em motor.py.
+O CAD0001 vem junto so como exemplo: qualquer arquivo 4GL pode ser analisado.
 Cores, fontes e modo claro/escuro ficam em .streamlit/config.toml e na pasta static/.
 
 Abrir no computador:  dois cliques em Abrir_TestingStudio.bat   (ou: python iniciar.py)
@@ -28,28 +30,17 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 
+import caixa_preta as cp
 import motor
 
 PASTA = Path(__file__).resolve().parent
 ARQUIVO_EXEMPLO = "cad0001_item_calculo.txt"
-FUNCAO_ALVO = "cad0001_calcula_valor"          # unidade sob teste
-FRONTEIRA = Decimal("0.00")                    # limite da regra de negocio
-
-# Caixa-preta parte da ESPECIFICACAO, nao do codigo. Estas quatro regras vem do
-# manual do laboratorio (secoes 2 e 3) e sao o "oraculo" dos testes.
-ESPECIFICACAO = [
-    "A função recebe três parâmetros decimais monetários (val_param1, val_param2, val_param3).",
-    "Parâmetro NULL é tratado como 0,00.",
-    "Nenhum parâmetro pode ser negativo: se algum for menor que 0,00, a função retorna -1 (erro).",
-    "Caso contrário, retorna (val_param1 × val_param2) + val_param3.",
-]
-# As mesmas regras, em linguagem simples, para o laudo.
-REGRAS_SIMPLES = [
-    ("Recebe três valores em dinheiro", "com duas casas decimais, como R$ 10,00"),
-    ("Valor em branco conta como zero", "um campo vazio vale 0,00"),
-    ("Valor negativo é recusado", "se algum valor for menor que zero, a resposta é -1, que significa erro"),
-    ("Nos demais casos, faz a conta", "primeiro valor × segundo valor + terceiro valor"),
-]
+# Preenchidos depois que o arquivo e lido e a funcao escolhida (valem para a execucao atual).
+FUNCAO_ALVO = ""                 # unidade sob teste
+SPEC = {}                        # especificacao (oraculo) escrita na pagina
+REGRAS = []                      # as regras do combinado, geradas a partir de SPEC
+ACHADOS, ACHADOS_SIMPLES = {}, {}
+formato_br = cp.formato_br
 
 # O primeiro e o modelo do manual; os outros entram se ele nao estiver liberado.
 MODELOS = ["gemini-2.5-flash", "gemini-3.5-flash-lite", "gemini-3.8-flash"]
@@ -80,7 +71,7 @@ REFERENCIAS = [
     {"n": 4, "grupo": "Teste funcional (caixa-preta)", "curto": "White e Cohen (1980)",
      "texto": "WHITE, L. J.; COHEN, E. I. A domain strategy for computer program testing. IEEE Transactions "
               "on Software Engineering, v. SE-6, n. 3, p. 247-257, 1980. DOI: 10.1109/TSE.1980.234486.",
-     "uso": "Pontos On e Off da análise de fronteira (o 0,00 e o 0,00 − ε).",
+     "uso": "Pontos On e Off da análise de fronteira (o próprio limite e o limite ± ε).",
      "link": "https://doi.org/10.1109/TSE.1980.234486"},
     {"n": 5, "grupo": "Teste estrutural (caixa-branca)", "curto": "McCabe (1976)",
      "texto": "McCABE, T. J. A complexity measure. IEEE Transactions on Software Engineering, v. SE-2, n. 4, "
@@ -120,7 +111,7 @@ REFERENCIAS = [
     {"n": 12, "grupo": "Material da disciplina", "curto": "Manual do laboratório (2026)",
      "texto": "PIFFER, F. Manual de laboratório, Sprint 1: TestingStudio Web, auditoria de caixa-preta "
               "(PCE e AVL) do CAD0001. Teste de Software I (ementa 62371). Joinville: Univille, 2026.",
-     "uso": "Especificação do CAD0001, usada como oráculo, e a tabela dos quatro pontos de fronteira.",
+     "uso": "Modelo de especificação usado como oráculo (o CAD0001 de exemplo) e a tabela dos pontos de fronteira.",
      "link": ""},
 ]
 REF = {r["n"]: r for r in REFERENCIAS}
@@ -197,128 +188,34 @@ def esquecer_fonte() -> None:
 # ==========================================================================
 # PASSO 2 - Oraculo, classes de equivalencia e casos de teste
 # ==========================================================================
-def oraculo(entradas, epsilon) -> Decimal:
-    """Resultado ESPERADO segundo a especificacao (nao olha o codigo)."""
-    valores = [Decimal(0) if v is None else v for v in entradas]
-    if any(v < 0 for v in valores):
-        return Decimal(-1).quantize(epsilon)
-    return ((valores[0] * valores[1]) + valores[2]).quantize(epsilon, ROUND_HALF_UP)
-
-
-def classe_de(valor) -> str:
-    """Classe de equivalencia a que um valor de entrada pertence."""
-    if valor is None:
-        return "Inválida (nulo)"
-    return "Inválida (negativo)" if valor < FRONTEIRA else "Válida"
-
-
-def ponto_de(valor, epsilon) -> str:
-    """Ponto de fronteira (AVL) que um valor representa."""
-    if valor is None:
-        return ""
-    if valor == FRONTEIRA:
-        return "On-Point"
-    if valor == FRONTEIRA - epsilon:
-        return "Off-Point"
-    return "Interior" if valor > FRONTEIRA else "Exterior"
-
-
-PONTOS = ["On-Point", "Off-Point", "Interior", "Exterior"]
-CLASSES = ["Válida", "Inválida (negativo)", "Inválida (nulo)"]
-
-ACHADOS = {
-    "NEGATIVO_ACEITO": ("Valor negativo aceito",
-                        "A especificação manda retornar -1 quando algum parâmetro é negativo, "
-                        "mas a função fez o cálculo normalmente."),
-    "VALIDO_REJEITADO": ("Valor válido rejeitado",
-                         "A função retornou -1 para uma entrada permitida. Causa provável: "
-                         "comparação com <= no lugar de <."),
-    "NULO": ("Nulo não tratado como 0,00",
-             "A função devolveu NULL em vez de tratar o parâmetro nulo como 0,00."),
-    "CALCULO": ("Resultado diferente da fórmula",
-                "O valor devolvido não corresponde a (val_param1 × val_param2) + val_param3."),
-    "ERRO": ("Erro na execução", "A função não chegou a devolver um resultado."),
-}
-
-
-def montar_caso(ident, tecnica, alvo, rotulo, entradas, programa, epsilon, maximo, descricao=""):
-    """Executa um caso de teste e compara o obtido com o esperado."""
-    esperado = oraculo(entradas, epsilon)
-    execucao = motor.executar_funcao(programa, entradas, epsilon)
-    obtido, erro = execucao["valor"], execucao["erro"]
-
-    achado, observacao = "", descricao
-    if abs(esperado) > maximo:
-        status = "Sem oráculo"
-        observacao = "O resultado passa do maior valor do tipo; a especificação não define esse caso."
-    elif erro:
-        status, achado, observacao = "Reprovado", "ERRO", erro
-    elif obtido == esperado:
-        status = "Aprovado"
-    else:
-        status = "Reprovado"
-        if obtido is None:
-            achado = "NULO"
-        elif esperado == -1:
-            achado = "NEGATIVO_ACEITO"
-        elif obtido == -1:
-            achado = "VALIDO_REJEITADO"
-        else:
-            achado = "CALCULO"
-    return {"id": ident, "tecnica": tecnica, "alvo": alvo, "rotulo": rotulo,
-            "entradas": list(entradas), "esperado": esperado, "obtido": obtido,
-            "erro": erro, "status": status, "achado": achado, "observacao": observacao}
-
-
-def gerar_suite_base(programa, epsilon, maximo, nominal, interior, exterior):
-    """Suite planejada: para cada parametro, os 4 pontos da AVL e a classe nula.
-    Um parametro varia por vez; os outros ficam no valor nominal (valido).
-    Assim, se um teste falhar, sabemos qual parametro causou a falha."""
-    nomes = programa["parametros"]
-    pontos = [("On-Point", FRONTEIRA), ("Off-Point", FRONTEIRA - epsilon),
-              ("Interior", interior), ("Exterior", exterior)]
-    casos = []
-    for i, nome in enumerate(nomes):
-        for rotulo, valor in pontos:
-            entradas = [nominal] * 3
-            entradas[i] = valor
-            casos.append(montar_caso(f"CT{len(casos) + 1:02d}", "AVL", nome, rotulo,
-                                     entradas, programa, epsilon, maximo))
-    for i, nome in enumerate(nomes):
-        entradas = [nominal] * 3
-        entradas[i] = None
-        casos.append(montar_caso(f"CT{len(casos) + 1:02d}", "PCE", nome, "Nulo",
-                                 entradas, programa, epsilon, maximo))
-    return casos
-
-
-def gerar_casos_extras(tabela: pd.DataFrame, programa, epsilon, maximo):
+def gerar_casos_extras(tabela: pd.DataFrame, programa, spec, formula, epsilon, maximo):
     """Converte as linhas digitadas na aba 'Testes extras' em casos de teste."""
     casos = []
     for _, linha in tabela.iterrows():
         entradas = []
-        for coluna in ("p1", "p2", "p3"):
-            bruto = linha[coluna]
+        for i, p in enumerate(spec["params"]):
+            bruto = linha.get(f"p{i + 1}")
             if bruto is None or pd.isna(bruto):
                 entradas.append(None)
             else:
-                entradas.append(Decimal(str(bruto)).quantize(epsilon, ROUND_HALF_UP))
+                entradas.append(Decimal(str(bruto)).quantize(p["tipo"]["epsilon"], ROUND_HALF_UP))
         descricao = "" if pd.isna(linha["descricao"]) else str(linha["descricao"]).strip()
         if all(v is None for v in entradas) and not descricao:
             continue                               # linha em branco
-        casos.append(montar_caso(f"EX{len(casos) + 1:02d}", "Extra", "—", "Extra",
-                                 entradas, programa, epsilon, maximo, descricao))
+        casos.append(cp.montar_caso(f"EX{len(casos) + 1:02d}", "Extra", "—", "Extra", entradas,
+                                    programa, spec, formula, epsilon, maximo, descricao))
     return casos
 
 
-def medir_qualidade(casos, nomes, epsilon):
+def medir_qualidade(casos, spec):
     """Indicadores de qualidade do conjunto de testes (criterios de adequacao)."""
     classes_cobertas, pontos_cobertos = set(), set()
     for caso in casos:
-        for nome, valor in zip(nomes, caso["entradas"]):
-            classes_cobertas.add((nome, classe_de(valor)))
-            if ponto_de(valor, epsilon):
-                pontos_cobertos.add((nome, ponto_de(valor, epsilon)))
+        for p, valor in zip(spec["params"], caso["entradas"]):
+            classes_cobertas.add((p["nome"], cp.classe_de(p, valor)))
+            ponto = cp.ponto_de(p, valor)
+            if ponto:
+                pontos_cobertos.add((p["nome"], ponto))
     achados = {}
     for caso in casos:
         if caso["achado"]:
@@ -328,8 +225,8 @@ def medir_qualidade(casos, nomes, epsilon):
         "aprovados": sum(c["status"] == "Aprovado" for c in casos),
         "reprovados": sum(c["status"] == "Reprovado" for c in casos),
         "sem_oraculo": sum(c["status"] == "Sem oráculo" for c in casos),
-        "classes": (len(classes_cobertas), len(nomes) * len(CLASSES)),
-        "pontos": (len(pontos_cobertos), len(nomes) * len(PONTOS)),
+        "classes": (len(classes_cobertas), sum(len(cp.classes_do_parametro(p)) for p in spec["params"])),
+        "pontos": (len(pontos_cobertos), sum(len(cp.pontos_do_parametro(p)) for p in spec["params"])),
         "classes_cobertas": classes_cobertas,
         "achados": achados,
     }
@@ -338,13 +235,6 @@ def medir_qualidade(casos, nomes, epsilon):
 # ==========================================================================
 # PASSO 3 - Apresentacao: formatos e tabelas
 # ==========================================================================
-def formato_br(valor) -> str:
-    """Numero no padrao brasileiro (1.234,56). None vira NULL."""
-    if valor is None:
-        return "NULL"
-    return f"{valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-
-
 ICONE = {"Aprovado": "✓", "Reprovado": "✕", "Sem oráculo": "–"}
 
 
@@ -364,38 +254,55 @@ def tabela_casos(casos, nomes) -> pd.DataFrame:
     return pd.DataFrame(linhas)
 
 
-def tabela_pce(casos, nomes, maximo) -> pd.DataFrame:
+def esperado_da_classe(spec, classe: str) -> str:
+    r = spec["retorno_invalido"]
+    erro = f"Erro: retorna {formato_br(r)}" if r is not None else "Não definido na especificação"
+    if classe == "Válida":
+        return f"Cálculo: {cp.formula_bonita(spec['formula'])}" if spec["formula"].strip() else \
+            "Não definido na especificação"
+    if classe.startswith("Nula"):
+        return {"zero": "Tratado como 0", "invalido": erro}.get(spec["nulo"], "Não definido na especificação")
+    return erro
+
+
+def tabela_pce(casos, spec) -> pd.DataFrame:
     """Classes de equivalencia de cada parametro e os casos que cobrem cada uma."""
-    dominio = {"Válida": f"0,00 ≤ valor ≤ {formato_br(maximo)}",
-               "Inválida (negativo)": "valor < 0,00",
-               "Inválida (nulo)": "valor IS NULL"}
-    esperado = {"Válida": "Cálculo (p1 × p2) + p3",
-                "Inválida (negativo)": "Erro: retorna -1",
-                "Inválida (nulo)": "Tratado como 0,00"}
     linhas = []
-    for i, nome in enumerate(nomes):
-        for classe in CLASSES:
+    for i, p in enumerate(spec["params"]):
+        for classe, dominio in cp.classes_do_parametro(p):
             cobrem = [c["id"] for c in casos
-                      if classe_de(c["entradas"][i]) == classe and c["alvo"] in (nome, "—")]
-            linhas.append({"Parâmetro": nome, "Classe": classe, "Domínio": dominio[classe],
-                           "Resultado esperado": esperado[classe],
+                      if cp.classe_de(p, c["entradas"][i]) == classe and c["alvo"] in (p["nome"], "—")]
+            linhas.append({"Parâmetro": p["nome"], "Classe": classe, "Domínio": dominio,
+                           "Resultado esperado": esperado_da_classe(spec, classe),
                            "Casos que cobrem": ", ".join(cobrem) if cobrem else "nenhum"})
     return pd.DataFrame(linhas)
 
 
-def tabela_pontos(epsilon, interior, exterior) -> pd.DataFrame:
-    """Os 4 pontos da AVL em torno da fronteira 0,00 (Tabela 1 do manual)."""
-    return pd.DataFrame([
-        {"Ponto": "On-Point", "Valor": FRONTEIRA, "Condição da fronteira": "Exatamente na fronteira válida",
-         "Resultado esperado": "Sucesso (cálculo)"},
-        {"Ponto": "Off-Point", "Valor": FRONTEIRA - epsilon,
-         "Condição da fronteira": "Primeiro ponto fora da fronteira (0,00 − ε)",
-         "Resultado esperado": "Erro (-1)"},
-        {"Ponto": "Interior", "Valor": interior, "Condição da fronteira": "Profundamente na região válida",
-         "Resultado esperado": "Sucesso (cálculo)"},
-        {"Ponto": "Exterior", "Valor": exterior, "Condição da fronteira": "Profundamente na região inválida",
-         "Resultado esperado": "Erro (-1)"},
-    ])
+def esperado_do_ponto(spec, ponto) -> str:
+    if ponto["valido"]:
+        return "Sucesso (cálculo)" if spec["formula"].strip() else "Não definido"
+    r = spec["retorno_invalido"]
+    return f"Erro ({formato_br(r)})" if r is not None else "Não definido"
+
+
+def grupos_de_fronteira(spec):
+    """Parametros com a mesma faixa e os mesmos pontos sao mostrados juntos."""
+    grupos = {}
+    for p in spec["params"]:
+        chave = tuple((x["rotulo"], x["valor"]) for x in cp.pontos_do_parametro(p))
+        grupos.setdefault(chave, []).append(p)
+    return list(grupos.values())
+
+
+def tabela_pontos(spec) -> pd.DataFrame:
+    """Os pontos da AVL de cada parametro (ou grupo de parametros com a mesma faixa)."""
+    linhas = []
+    for grupo in grupos_de_fronteira(spec):
+        for ponto in cp.pontos_do_parametro(grupo[0]):
+            linhas.append({"Parâmetros": ", ".join(p["nome"] for p in grupo), "Ponto": ponto["rotulo"],
+                           "Valor": formato_br(ponto["valor"]), "Condição": ponto["condicao"],
+                           "Resultado esperado": esperado_do_ponto(spec, ponto)})
+    return pd.DataFrame(linhas)
 
 
 # ==========================================================================
@@ -598,16 +505,6 @@ _MARCA_SVG = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" fill=
 MARCA = ('<img class="ts-logo" alt="" src="data:image/svg+xml;base64,'
          + base64.b64encode(_MARCA_SVG.encode()).decode() + '">')
 
-ACHADOS_SIMPLES = {
-    "NEGATIVO_ACEITO": ("Aceita valor negativo", "deveria recusar com -1 e faz a conta"),
-    "VALIDO_REJEITADO": ("Recusa um valor permitido", "responde -1 para um valor que a regra aceita"),
-    "NULO": ("Não trata campo em branco como zero", "devolve vazio em vez de fazer a conta com 0,00"),
-    "CALCULO": ("Faz a conta errada", "o resultado não bate com 1º × 2º + 3º"),
-    "ERRO": ("Para no meio da execução", "o programa não chega a dar uma resposta"),
-}
-ORDINAL = ["primeiro", "segundo", "terceiro"]
-
-
 def esc(texto) -> str:
     return html.escape(str(texto))
 
@@ -625,10 +522,12 @@ def html_topo() -> str:
 
 def html_boas_vindas() -> str:
     passos = [
-        ("1", "Anexe o programa", "Envie o arquivo .txt com o código 4GL. Nada é analisado antes disso."),
-        ("2", "A ferramenta testa de quatro formas", "Ela executa o programa com valores escolhidos a dedo e "
-                                                    "mede o quanto desse programa os testes alcançaram."),
-        ("3", "Você recebe um laudo", "Um resumo em linguagem simples, com as provas técnicas e as fontes logo abaixo."),
+        ("1", "Anexe o programa", "Envie qualquer arquivo .txt com código 4GL. Nada é analisado antes disso; "
+                                  "o CAD0001 está disponível como exemplo."),
+        ("2", "Diga o que ele deve fazer", "Escolha a função e escreva a especificação do enunciado: faixa válida, "
+                                           "valor em branco e fórmula. É dela que vem a resposta certa."),
+        ("3", "Receba o laudo", "A ferramenta testa de quatro formas, valida os próprios testes e entrega um resumo "
+                                "em linguagem simples, com as provas técnicas e as fontes."),
     ]
     return '<div class="ts-boas-vindas">' + "".join(
         f'<article><span class="ts-passo">Passo {n}</span><h3>{esc(t)}</h3><p>{esc(x)}</p></article>'
@@ -665,6 +564,8 @@ def estado_geral(d) -> str:
     nos, arestas = a["cobertura"]["Todos-Nós"], a["cobertura"]["Todas-Arestas"]
     if q["reprovados"]:
         return "ruim"
+    if q["aprovados"] == 0 or q["sem_oraculo"]:
+        return "alerta"
     if nos[0] < nos[1] or arestas[0] < arestas[1] or (mut["MS"] is not None and mut["MS"] < 100):
         return "alerta"
     return "ok"
@@ -675,11 +576,22 @@ def html_veredito(d) -> str:
     estado = estado_geral(d)
     v = d["suite"]
     causas = [ACHADOS_SIMPLES[c][0].lower() for c in q["achados"]]
-    if estado == "ruim":
+    com_oraculo = q["aprovados"] + q["reprovados"]
+    if com_oraculo == 0:
+        selo = chip("Falta a especificação", "alerta")
+        titulo = "Os testes rodaram, mas ainda não há como julgar as respostas."
+        texto = ("A resposta certa de cada teste vem da especificação do programa. Preencha-a na aba "
+                 "Programa e especificação e o laudo é refeito na hora.")
+    elif estado == "ruim":
         selo = chip("Reprovado na conferência", "ruim")
         titulo = "O programa ainda não cumpre tudo o que foi combinado."
         texto = (f"{q['reprovados']} de {q['total']} testes receberam uma resposta diferente da regra. "
                  f"{'O motivo é um só' if len(causas) == 1 else 'Os motivos'}: {', '.join(causas)}.")
+    elif estado == "alerta" and q["sem_oraculo"]:
+        selo = chip("Aprovado, com ressalvas", "alerta")
+        titulo = "O programa respondeu como combinado onde a especificação define a resposta."
+        texto = (f"{q['aprovados']} testes aprovados. Em {q['sem_oraculo']} testes a especificação não diz qual "
+                 "é a resposta certa; complete-a na aba Programa e especificação.")
     elif estado == "alerta":
         selo = chip("Aprovado, com ressalvas", "alerta")
         titulo = "O programa respondeu como combinado, mas os testes ainda não alcançam tudo."
@@ -698,28 +610,46 @@ def html_veredito(d) -> str:
             + "</dl></section>")
 
 
+def casos_da_regra(chave, casos, spec):
+    """Casos que verificam uma regra do combinado."""
+    params = spec["params"]
+    if chave == "entrada":
+        return list(casos)
+    if chave == "nulo":
+        return [c for c in casos if any(v is None for v in c["entradas"])]
+    if chave == "faixa":                        # valores fora da faixa e valores exatamente no limite
+        return [c for c in casos if any(cp.fora_da_faixa(p, v) or cp.ponto_de(p, v).startswith("On-Point")
+                                        for p, v in zip(params, c["entradas"]))]
+    return [c for c in casos if all((v is None and spec["nulo"] == "zero") or
+                                    (v is not None and not cp.fora_da_faixa(p, v))
+                                    for p, v in zip(params, c["entradas"]))]
+
+
 def situacao_das_regras(d):
-    """Para cada regra do combinado: quantos testes a verificam e se foi cumprida."""
-    casos, achados = d["casos_lista"], d["qualidade"]["achados"]
-    com_nulo = [c for c in casos if any(v is None for v in c["entradas"])]
-    com_negativo = [c for c in casos if any(v is not None and v < 0 for v in c["entradas"])]
-    so_validos = [c for c in casos if c not in com_nulo and c not in com_negativo]
-    regras = [
-        (len(casos), []),
-        (len(com_nulo), achados.get("NULO", [])),
-        (len(com_negativo), achados.get("NEGATIVO_ACEITO", []) + achados.get("VALIDO_REJEITADO", [])),
-        (len(so_validos), achados.get("CALCULO", [])),
-    ]
-    return regras
+    """Para cada regra do combinado: quantos testes a verificam e quais falharam."""
+    situacao = []
+    for regra in REGRAS:
+        cobrem = casos_da_regra(regra["chave"], d["casos_lista"], SPEC)
+        falhas = [c["id"] for c in cobrem if c["status"] == "Reprovado" and (
+            (regra["chave"] == "entrada" and c["achado"] == "ERRO") or
+            (regra["chave"] == "faixa" and c["achado"] in ("INVALIDO_ACEITO", "VALIDO_REJEITADO")) or
+            (regra["chave"] == "formula" and c["achado"] not in ("INVALIDO_ACEITO", "VALIDO_REJEITADO")) or
+            regra["chave"] == "nulo")]
+        situacao.append((len(cobrem), falhas))
+    return situacao
 
 
 def html_regras(d) -> str:
     linhas = []
-    for i, ((titulo, detalhe), (verificada, falhas)) in enumerate(zip(REGRAS_SIMPLES, situacao_das_regras(d)), 1):
-        estado = chip(f"Não cumprida em {len(falhas)} testes", "ruim") if falhas else chip("Cumprida", "ok")
-        linhas.append(f'<div class="ts-regra"><span class="ts-n">{i}</span><div><b>{esc(titulo)}</b>'
-                      f'<small>{esc(detalhe)}</small></div><div class="ts-direita">{estado}'
+    for i, (regra, (verificada, falhas)) in enumerate(zip(REGRAS, situacao_das_regras(d)), 1):
+        estado = chip(f"Não cumprida em {len(falhas)} teste{'s' if len(falhas) > 1 else ''}", "ruim") if falhas else (
+            chip("Cumprida", "ok") if verificada else chip("Sem teste", "neutro"))
+        linhas.append(f'<div class="ts-regra"><span class="ts-n">{i}</span><div><b>{esc(regra["titulo"])}</b>'
+                      f'<small>{esc(regra["detalhe"])}</small></div><div class="ts-direita">{estado}'
                       f'<small>verificada em {verificada} testes</small></div></div>')
+    if len(REGRAS) == 1:
+        linhas.append('<div class="ts-regra"><span class="ts-n">!</span><div><b>Faltam as regras do resultado</b>'
+                      '<small>preencha a especificação na aba Programa e especificação</small></div></div>')
     return '<div class="ts-regras">' + "".join(linhas) + "</div>"
 
 
@@ -737,8 +667,8 @@ def html_estacoes(d) -> str:
     cartoes = [
         ("Conferência 1", "Conferimos as respostas", "Caixa-preta: classes de equivalência e valor limite",
          "Como conferir uma calculadora sem abri-la: digitamos valores e comparamos cada resposta com a regra "
-         "combinada. Os valores foram escolhidos onde o erro costuma se esconder: o zero, um centavo abaixo "
-         "dele e campos em branco.",
+         "combinada. Os valores foram escolhidos onde o erro costuma se esconder: nos limites de cada valor, "
+         "um passo além deles e em campos em branco.",
          f"{q['aprovados']} de {com_oraculo}", "respostas iguais ao combinado",
          q["aprovados"] / com_oraculo if com_oraculo else 0,
          f"Grupos de valores testados: {q['classes'][0]} de {q['classes'][1]}. "
@@ -781,10 +711,23 @@ def _descreve_entrada(caso, nomes) -> str:
     if caso["tecnica"] == "Extra":
         return caso["observacao"] or "caso extra"
     i = nomes.index(caso["alvo"]) if caso["alvo"] in nomes else 0
-    onde = f"no {ORDINAL[i]} valor"
-    return {"On-Point": f"zero exato {onde}", "Off-Point": f"um centavo abaixo de zero {onde}",
-            "Interior": f"um valor comum {onde}", "Exterior": f"um valor bem negativo {onde}",
-            "Nulo": f"campo em branco {onde}"}.get(caso["rotulo"], "")
+    p, rotulo = SPEC["params"][i], caso["rotulo"]
+    onde = f"no {cp.ordinal(i)} valor"
+    lado = "máximo" if "(máx.)" in rotulo or p["minimo"] is None else "mínimo"
+    if rotulo.startswith("On-Point"):
+        return f"exatamente no {lado} permitido, {onde}"
+    if rotulo.startswith("Off-Point"):
+        return f"um passo (ε) além do {lado}, {onde}"
+    if rotulo.startswith("Exterior"):
+        return f"um valor bem fora da faixa, {onde}"
+    return {"Interior": f"um valor comum {onde}", "Nulo": f"campo em branco {onde}"}.get(rotulo, "")
+
+
+def _o_que_manda(caso) -> str:
+    r = SPEC["retorno_invalido"]
+    if r is not None and caso["esperado"] == r.quantize(caso["esperado"]):
+        return "recusar, porque há valor fora da faixa"
+    return "o resultado da conta"
 
 
 def caso_exemplar(d):
@@ -794,21 +737,26 @@ def caso_exemplar(d):
         return None
     principal = next(iter(d["qualidade"]["achados"]))
     candidatos = [c for c in reprovados if c["achado"] == principal]
-    return next((c for c in candidatos if c["rotulo"] == "Off-Point"), candidatos[0])
+    return next((c for c in candidatos if c["rotulo"].startswith("Off-Point")), candidatos[0])
 
 
 def html_exemplo(d) -> str:
     caso = caso_exemplar(d)
     q, a = d["qualidade"], d["analise"]
+    if caso is None and q["aprovados"] == 0:
+        return ('<div class="ts-cartao"><h3>Sem resposta certa definida</h3><p>Os testes foram executados, mas a '
+                'especificação ainda não diz qual deveria ser a resposta. Preencha-a na aba Programa e '
+                'especificação para ver aqui um teste do começo ao fim.</p></div>')
     if caso is None:
-        bom = next((c for c in d["casos_lista"] if c["rotulo"] == "Off-Point"), d["casos_lista"][0])
+        julgados = [c for c in d["casos_lista"] if c["status"] == "Aprovado"]
+        bom = next((c for c in julgados if c["rotulo"].startswith("Off-Point")), julgados[0])
         return (f'<div class="ts-exemplo"><div><span class="ts-rot">O teste mais difícil enviou</span>'
                 f'<b class="ts-num">{esc(texto_entrada(bom["entradas"]))}</b><small>{esc(_descreve_entrada(bom, d["parametros"]))}</small></div>'
                 f'<div><span class="ts-rot">O combinado manda</span><b class="ts-num">{esc(formato_br(bom["esperado"]))}</b>'
-                f'<small>{"recusar, porque há valor negativo" if bom["esperado"] == -1 else "o resultado da conta"}</small></div>'
+                f'<small>{_o_que_manda(bom)}</small></div>'
                 f'<div class="ts-certo"><span class="ts-rot">O programa respondeu</span><b class="ts-num">{esc(formato_br(bom["obtido"]))}</b>'
                 '<small>exatamente o combinado</small></div></div>')
-    explica_obtido = {"NEGATIVO_ACEITO": "fez a conta como se o valor fosse válido",
+    explica_obtido = {"INVALIDO_ACEITO": "fez a conta como se o valor fosse válido",
                       "VALIDO_REJEITADO": "recusou um valor que a regra aceita",
                       "NULO": "devolveu vazio", "CALCULO": "fez uma conta diferente da regra",
                       "ERRO": "parou com erro"}[caso["achado"]]
@@ -816,25 +764,34 @@ def html_exemplo(d) -> str:
     exemplo = (f'<div class="ts-exemplo"><div><span class="ts-rot">O teste enviou</span>'
                f'<b class="ts-num">{esc(texto_entrada(caso["entradas"]))}</b><small>{esc(_descreve_entrada(caso, d["parametros"]))}</small></div>'
                f'<div><span class="ts-rot">O combinado manda</span><b class="ts-num">{esc(formato_br(caso["esperado"]))}</b>'
-               f'<small>{"recusar, porque há valor negativo" if caso["esperado"] == -1 else "o resultado da conta"}</small></div>'
+               f'<small>{_o_que_manda(caso)}</small></div>'
                f'<div class="ts-errado"><span class="ts-rot">O programa respondeu</span><b class="ts-num">{esc(obtido)}</b>'
                f'<small>{esc(explica_obtido)}</small></div></div>')
     nos, arestas = a["cobertura"]["Todos-Nós"], a["cobertura"]["Todas-Arestas"]
     total = nos[0] == nos[1] and arestas[0] == arestas[1]
     ids = q["achados"][caso["achado"]]
-    porque = (f'<div class="ts-cartao"><h3>Por que só a conferência 1 percebeu</h3>'
-              f'<p>O mesmo problema apareceu em {len(ids)} testes ({esc(", ".join(ids))}).</p>'
+    porque = ('<div class="ts-cartao"><h3>Por que só a conferência 1 percebeu</h3>'
+              + (f'<p>O mesmo problema apareceu em {len(ids)} testes ({esc(", ".join(ids))}).</p>' if len(ids) > 1 else
+               f'<p>O problema apareceu no teste {esc(ids[0])}.</p>')
               + ('<p>As conferências 2, 3 e 4 examinam o código que foi escrito, e nele tudo foi percorrido e vigiado. '
-                 'Mas a regra dos negativos nunca foi escrita: não há trecho para percorrer nem defeito para plantar. '
+                 'Mas a verificação da faixa válida não está no código: não há trecho para percorrer nem defeito para plantar. '
                  'Só quem compara a resposta com o combinado percebe o que falta. É por isso que o laudo usa mais de '
-                 'uma forma de teste.</p>' if total and caso["achado"] == "NEGATIVO_ACEITO" else
+                 'uma forma de teste.</p>' if total and caso["achado"] == "INVALIDO_ACEITO" else
                  '<p>Cada forma de teste enxerga um tipo de problema; comparar a resposta com o combinado é a que '
                  'mostra se o programa faz o que foi pedido.</p>') + "</div>")
-    if caso["achado"] == "NEGATIVO_ACEITO":
-        p = d["parametros"]
-        conserto = (f"IF {p[0]} &lt; 0 OR {p[1]} &lt; 0 OR {p[2]} &lt; 0 THEN\n    RETURN -1\nEND IF")
+    conserto = esc(cp.condicao_que_falta(SPEC))
+    if caso["achado"] == "INVALIDO_ACEITO" and conserto:
         corrige = (f'<div class="ts-cartao"><h3>Como corrigir</h3><p>Antes da conta, incluir a verificação que falta:</p>'
-                   f'<pre>{conserto}</pre><p>Cole essas linhas no fonte, na aba Programa, e veja o laudo mudar na hora.</p></div>')
+                   f'<pre>{conserto}</pre><p>Cole essas linhas no fonte, na aba Programa e especificação, e veja o laudo mudar na hora.</p></div>')
+    elif caso["achado"] == "VALIDO_REJEITADO":
+        p = SPEC["params"][d["parametros"].index(caso["alvo"])] if caso["alvo"] in d["parametros"] else None
+        limite = ""
+        if p is not None:
+            limite = formato_br(p["maximo"] if "(máx.)" in caso["rotulo"] or p["minimo"] is None else p["minimo"])
+        corrige = ('<div class="ts-cartao"><h3>Como corrigir</h3><p>O valor do limite faz parte da faixa válida e '
+                   f'foi recusado. Procure no código a comparação com {esc(limite) or "o limite"} e confira o sinal: '
+                   'para aceitar o próprio limite, use &gt; no lugar de &gt;= (ou &lt; no lugar de &lt;=).</p>'
+                   '<p>Corrija o fonte na aba Programa e especificação e veja o laudo mudar na hora.</p></div>')
     else:
         corrige = ('<div class="ts-cartao"><h3>Como corrigir</h3><p>Compare o trecho do código responsável por essa '
                    'regra com o combinado; a aba da Sprint 1 lista todos os testes que falharam.</p></div>')
@@ -842,7 +799,7 @@ def html_exemplo(d) -> str:
 
 
 def html_confianca(d) -> str:
-    """A suite do CAD0001 tambem foi validada (Sprint 4): o resumo para leigos."""
+    """A suite tambem foi validada (Sprint 4): o resumo para leigos."""
     v, q = d["suite"], d["qualidade"]
     tudo = v["ok"] == v["total"]
     itens = "".join(f'<li>{"✓" if c["ok"] else "!"}&nbsp; {esc(c["pergunta"])}<span>{esc(c["curto"])}</span></li>'
@@ -856,7 +813,7 @@ def html_confianca(d) -> str:
     return (f'<div class="ts-confianca"><div class="ts-placar{"" if tudo else " ts-placar-ruim"}"><b>{v["ok"]}/{v["total"]}</b>'
             '<span>conferências dos próprios testes atendidas</span></div><div class="ts-cartao">'
             '<h3>Antes do veredito, os testes foram testados</h3>'
-            '<p>Um laudo só vale tanto quanto os testes que o sustentam. Por isso a suíte do CAD0001 passou por '
+            f'<p>Um laudo só vale tanto quanto os testes que o sustentam. Por isso a suíte de {esc(FUNCAO_ALVO)} passou por '
             f'{v["total"]} conferências antes de qualquer conclusão sobre o programa:</p>'
             f'<ul class="ts-lista">{itens}</ul>'
             f'<p style="margin-top:.8rem"><b>{esc(conclusao)}</b></p>'
@@ -867,10 +824,14 @@ def html_confianca(d) -> str:
 
 def html_limites() -> str:
     itens = [
-        ("Uma função por vez.", "O laudo examina a função de cálculo do CAD0001; telas, banco de dados e a "
+        ("Uma função por vez.", f"O laudo examina a função {FUNCAO_ALVO}; telas, banco de dados e a "
                                 "comunicação entre módulos ficam fora."),
-        ("Interpretação do código.", "A ferramenta lê e executa o 4GL por conta própria (IF, WHILE, LET, RETURN); "
-                                     "ela não é o compilador Informix."),
+        ("Interpretação do código.", "A ferramenta lê e executa o 4GL por conta própria (IF, CASE, WHILE, FOR, "
+                                     "LET, RETURN); ela não é o compilador Informix. Comandos de tela, como "
+                                     "DISPLAY e ERROR, são ignorados."),
+        ("A resposta certa vem da especificação.", "Se a especificação escrita na página estiver errada, o "
+                                                   "laudo também estará. Ela deve ser copiada do enunciado, "
+                                                   "nunca do código."),
         ("Sugestões são indícios.", "Quando a ferramenta sugere um teste novo ou aponta um caminho impossível, ela "
                                     "se baseia em mil combinações de valores, não em uma prova matemática."),
         ("Textos de IA são opcionais.", "O Gemini só redige textos; todos os números vêm dos cálculos da ferramenta."),
@@ -903,35 +864,44 @@ def html_glossario() -> str:
         f"<div><dt>{esc(t)}</dt><dd>{esc(x)}</dd></div>" for t, x in GLOSSARIO) + "</dl>"
 
 
-def html_matriz(casos, nomes) -> str:
+def html_matriz(casos, spec) -> str:
     """Matriz parametro x ponto: mostra de uma vez o que foi coberto e o resultado."""
-    colunas = PONTOS + ["Nulo"]
-    partes = ["<table class='ts-matriz'><thead><tr><th>Parâmetro</th>"]
-    partes += [f"<th>{c}</th>" for c in colunas]
+    colunas = []
+    for p in spec["params"]:
+        for ponto in cp.pontos_do_parametro(p):
+            if ponto["rotulo"] not in colunas:
+                colunas.append(ponto["rotulo"])
+    colunas.append("Nulo")
+    partes = ["<div class='rolagem'><table class='ts-matriz'><thead><tr><th>Parâmetro</th>"]
+    partes += [f"<th>{esc(c)}</th>" for c in colunas]
     partes.append("</tr></thead><tbody>")
-    for nome in nomes:
-        partes.append(f"<tr><th>{esc(nome)}</th>")
+    for p in spec["params"]:
+        existentes = {x["rotulo"] for x in cp.pontos_do_parametro(p)} | {"Nulo"}
+        partes.append(f"<tr><th>{esc(p['nome'])}</th>")
         for coluna in colunas:
-            caso = next((c for c in casos if c["alvo"] == nome and c["rotulo"] == coluna), None)
+            if coluna not in existentes:
+                partes.append("<td><small>não se aplica</small></td>")
+                continue
+            caso = next((c for c in casos if c["alvo"] == p["nome"] and c["rotulo"] == coluna), None)
             if caso is None:
                 partes.append(f"<td>{chip('não testado', 'neutro')}</td>")
                 continue
             tipo = {"Aprovado": "ok", "Reprovado": "ruim"}.get(caso["status"], "neutro")
             partes.append(f"<td>{chip(caso['status'], tipo)}<small>{caso['id']}</small></td>")
         partes.append("</tr>")
-    partes.append("</tbody></table>")
+    partes.append("</tbody></table></div>")
     return "".join(partes)
 
 
-def svg_regua(pontos: pd.DataFrame, epsilon: Decimal) -> str:
-    """Regua da fronteira: regiao invalida a esquerda do 0,00 e valida a direita.
-    Escala logaritmica dos dois lados do zero, para que 0,00 e -0,01 nao
-    fiquem um em cima do outro."""
+def svg_regua(fronteira, lado: str, pontos, epsilon, texto_invalido: str, texto_valido: str) -> str:
+    """Regua de uma fronteira: regiao invalida de um lado, valida do outro.
+    Escala logaritmica dos dois lados da fronteira, para que o On-Point e o
+    Off-Point (separados por um Epsilon) nao fiquem um em cima do outro."""
     import math
     largura, esquerda, direita = 960, 46, 46
     c = float(epsilon) / 5
-    valores = [float(v) for v in pontos["Valor"]]
-    maior = max(abs(v) for v in valores) * 4
+    deslocamentos = [float(p["valor"] - fronteira) for p in pontos]
+    maior = max([abs(v) for v in deslocamentos] + [float(epsilon)]) * 4
 
     def f(x):
         return math.copysign(math.log10(1 + abs(x) / c), x)
@@ -940,10 +910,13 @@ def svg_regua(pontos: pd.DataFrame, epsilon: Decimal) -> str:
         return esquerda + (f(x) - f(-maior)) / (f(maior) - f(-maior)) * (largura - esquerda - direita)
 
     zero = X(0)
+    cor_esq, cor_dir = ("var(--ts-invalido)", "var(--ts-valido)") if lado == "min" else \
+        ("var(--ts-valido)", "var(--ts-invalido)")
+    texto_esq, texto_dir = (texto_invalido, texto_valido) if lado == "min" else (texto_valido, texto_invalido)
     partes = [f'<svg viewBox="0 0 {largura} 176" class="ts-regua" role="img" '
-              'aria-label="Régua da fronteira com os quatro pontos testados">',
-              f'<rect x="{X(-maior):.1f}" y="78" width="{zero - X(-maior):.1f}" height="28" rx="6" fill="var(--ts-invalido)"/>',
-              f'<rect x="{zero:.1f}" y="78" width="{X(maior) - zero:.1f}" height="28" rx="6" fill="var(--ts-valido)"/>',
+              f'aria-label="Régua da fronteira {esc(formato_br(fronteira))} com os pontos testados">',
+              f'<rect x="{X(-maior):.1f}" y="78" width="{zero - X(-maior):.1f}" height="28" rx="6" fill="{cor_esq}"/>',
+              f'<rect x="{zero:.1f}" y="78" width="{X(maior) - zero:.1f}" height="28" rx="6" fill="{cor_dir}"/>',
               f'<line class="ts-zero" x1="{zero:.1f}" x2="{zero:.1f}" y1="66" y2="118" stroke-width="2" stroke-dasharray="4 3"/>']
     marcas, potencia = [0.0], float(epsilon)
     while potencia <= maior:
@@ -955,24 +928,53 @@ def svg_regua(pontos: pd.DataFrame, epsilon: Decimal) -> str:
         if x - ultimo < 40:
             continue
         ultimo = x
+        valor = (fronteira + Decimal(str(marca))).quantize(epsilon)
         partes.append(f'<text class="ts-suave" x="{x:.1f}" y="130" font-size="12" text-anchor="middle">'
-                      f'{esc(formato_br(Decimal(str(marca))))}</text>')
-    for _, linha in pontos.iterrows():
-        x = X(float(linha["Valor"]))
-        ancora, dx = {"Off-Point": ("end", -9), "On-Point": ("start", 9)}.get(linha["Ponto"], ("middle", 0))
-        partes.append(f'<g><title>{esc(linha["Ponto"])}: {esc(formato_br(linha["Valor"]))}. '
-                      f'{esc(linha["Condição da fronteira"])}. Esperado: {esc(linha["Resultado esperado"])}.</title>'
-                      f'<text class="ts-tinta" x="{x + dx:.1f}" y="40" font-size="14" font-weight="700" text-anchor="{ancora}">{esc(linha["Ponto"])}</text>'
-                      f'<text class="ts-suave" x="{x + dx:.1f}" y="58" font-size="13" text-anchor="{ancora}">{esc(formato_br(linha["Valor"]))}</text>'
+                      f'{esc(formato_br(valor))}</text>')
+    lados = {"min": {"Off-Point": ("end", -9), "On-Point": ("start", 9)},
+             "max": {"On-Point": ("end", -9), "Off-Point": ("start", 9)}}[lado]
+    for ponto, d in zip(pontos, deslocamentos):
+        x = X(d)
+        nome = ponto["rotulo"].split(" (")[0]
+        ancora, dx = lados.get(nome, ("middle", 0))
+        partes.append(f'<g><title>{esc(ponto["rotulo"])}: {esc(formato_br(ponto["valor"]))}. '
+                      f'{esc(ponto["condicao"])}. Esperado: {esc(ponto["esperado"])}.</title>'
+                      f'<text class="ts-tinta" x="{x + dx:.1f}" y="40" font-size="14" font-weight="700" text-anchor="{ancora}">{esc(nome)}</text>'
+                      f'<text class="ts-suave" x="{x + dx:.1f}" y="58" font-size="13" text-anchor="{ancora}">{esc(formato_br(ponto["valor"]))}</text>'
                       f'<circle class="ts-ponto" cx="{x:.1f}" cy="92" r="7.5" stroke-width="2.4"/></g>')
-    partes.append(f'<text class="ts-suave" x="{esquerda}" y="160" font-size="12.5">Região inválida: valor menor que '
-                  f'0,00, a resposta deve ser -1</text>')
+    partes.append(f'<text class="ts-suave" x="{esquerda}" y="160" font-size="12.5">{esc(texto_esq)}</text>')
     partes.append(f'<text class="ts-suave" x="{largura - direita}" y="160" font-size="12.5" text-anchor="end">'
-                  'Região válida: valor de 0,00 para cima, faz a conta</text>')
-    partes.append(f'<rect x="{esquerda - 16}" y="151" width="11" height="11" rx="2" fill="var(--ts-invalido)"/>')
-    partes.append(f'<rect x="{largura - direita + 5}" y="151" width="11" height="11" rx="2" fill="var(--ts-valido)"/>')
+                  f'{esc(texto_dir)}</text>')
+    partes.append(f'<rect x="{esquerda - 16}" y="151" width="11" height="11" rx="2" fill="{cor_esq}"/>')
+    partes.append(f'<rect x="{largura - direita + 5}" y="151" width="11" height="11" rx="2" fill="{cor_dir}"/>')
     partes.append("</svg>")
     return "".join(partes)
+
+
+def reguas(spec):
+    """Uma regua por fronteira: [(titulo, svg)]."""
+    r = spec["retorno_invalido"]
+    resposta = f", a resposta deve ser {formato_br(r)}" if r is not None else ""
+    lista = []
+    for grupo in grupos_de_fronteira(spec):
+        p = grupo[0]
+        nomes = ", ".join(x["nome"] for x in grupo)
+        for lado, limite in (("min", p["minimo"]), ("max", p["maximo"])):
+            if limite is None:
+                continue
+            pontos = [{**x, "esperado": esperado_do_ponto(spec, x)} for x in cp.pontos_do_parametro(p)
+                      if x["lado"] == lado or x["rotulo"] == "Interior"]
+            b = formato_br(limite)
+            if lado == "min":
+                invalido = f"Região inválida: valor menor que {b}{resposta}"
+                valido = f"Região válida: valor de {b} para cima"
+                titulo = f"{nomes}: limite mínimo {b}"
+            else:
+                invalido = f"Região inválida: valor maior que {b}{resposta}"
+                valido = f"Região válida: valor até {b}"
+                titulo = f"{nomes}: limite máximo {b}"
+            lista.append((titulo, svg_regua(limite, lado, pontos, p["tipo"]["epsilon"], invalido, valido)))
+    return lista
 
 
 def _fontes_embutidas() -> str:
@@ -1011,7 +1013,7 @@ def gerar_relatorio_html(d) -> str:
 
     return f"""<!doctype html><html lang="pt-BR"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Laudo de qualidade — CAD0001</title>
+<title>Laudo de qualidade — {esc(FUNCAO_ALVO)}</title>
 <style>
 {_fontes_embutidas()}
 {ESTILO_CSS}
@@ -1063,9 +1065,11 @@ pre.parecer {{ white-space:pre-wrap; font-family:inherit; background: var(--ts-r
 <div class="kpis"><div class="kpi"><b>{q['total']}</b><span>casos executados</span></div><div class="kpi"><b>{q['aprovados']}</b><span>aprovados</span></div>
 <div class="kpi"><b>{q['reprovados']}</b><span>reprovados</span></div><div class="kpi"><b>{q['classes'][0]}/{q['classes'][1]}</b><span>classes cobertas</span></div>
 <div class="kpi"><b>{q['pontos'][0]}/{q['pontos'][1]}</b><span>pontos de fronteira cobertos</span></div></div>
-<h3>Especificação usada como oráculo</h3><ol>{''.join(f'<li>{esc(r)}</li>' for r in ESPECIFICACAO)}</ol>
-<h3>Épsilon e régua da fronteira</h3><p>{esc(d['justificativa'])}</p>{base("epsilon")}
-{svg_regua(d['pontos_brutos'], d['epsilon'])}
+<h3>Especificação usada como oráculo</h3>{f"<p>{esc(SPEC['enunciado'])}</p>" if SPEC['enunciado'].strip() else ""}
+<ol>{''.join(f'<li>{esc(r["formal"])}</li>' for r in REGRAS)}</ol>
+<h3>Épsilon e réguas da fronteira</h3><p>{esc(d['justificativa'])}</p>{base("epsilon")}
+{''.join(f"<p class='nota'>{esc(t)}</p>{svg}" for t, svg in d['reguas']) or "<p>A especificação não define faixa válida; não há fronteira.</p>"}
+<h3>Pontos de fronteira</h3>{tabela(d['pontos'])}
 <h3>Classes de equivalência</h3>{tabela(d['pce'])}
 <h3>Casos de teste</h3>{tabela(d['casos'])}
 
@@ -1213,7 +1217,9 @@ def _dados_para_o_gemini(fonte_funcao, d) -> str:
                              f"{'atendido' if c['ok'] else 'pendente'}" for c in v["criterios"])
     achados = "\n".join(f"- {ACHADOS[c][0]}: casos {', '.join(ids)}" for c, ids in q["achados"].items()) \
         or "- nenhum"
-    regras = "\n".join(f"{i}. {r}" for i, r in enumerate(ESPECIFICACAO, 1))
+    regras = "\n".join(f"{i}. {r['formal']}" for i, r in enumerate(REGRAS, 1))
+    if SPEC.get("enunciado", "").strip():
+        regras = f"Enunciado: {SPEC['enunciado'].strip()}\n" + regras
     referencias = "\n".join(f"- [{r['n']}] {r['texto']}" for r in REFERENCIAS)
     vivos = d["mutantes"][d["mutantes"]["Estado"] == "Vivo"]
     return f"""<especificacao>
@@ -1274,7 +1280,7 @@ mutantes_vivos_csv:
 
 def montar_prompt(fonte_funcao, d) -> str:
     return f"""Você é um auditor de teste de software. Escreva, em português do Brasil, um parecer
-de teste da função {FUNCAO_ALVO} do programa CAD0001, com foco na QUALIDADE DO PRODUTO DE TESTE
+de teste da função {FUNCAO_ALVO} (arquivo {d['arquivo']}), com foco na QUALIDADE DO PRODUTO DE TESTE
 (adequação e cobertura do conjunto de casos) e nos defeitos revelados.
 
 Estrutura do parecer:
@@ -1294,7 +1300,7 @@ use apenas as referências listadas e não invente citações literais nem núme
 
 def montar_prompt_pitch(fonte_funcao, d) -> str:
     return f"""Você vai ajudar um estudante a apresentar um pitch de 5 minutos do TestingStudio Web,
-uma ferramenta web que audita o programa CAD0001 (4GL/Logix) com caixa-preta, caixa-branca,
+uma ferramenta web que audita funções de programas 4GL/Logix (nesta análise, {FUNCAO_ALVO}) com caixa-preta, caixa-branca,
 fluxo de dados, teste de mutação e validação da suíte. O público é o professor e a turma de Teste de Software.
 
 Escreva, em português do Brasil, a FALA do pitch, em primeira pessoa e tom natural, dividida em:
@@ -1633,7 +1639,7 @@ Próximos passos: FOR e CASE, chamadas entre funções (teste de integração) e
 """
 
 
-# ---- Sprint 4: validacao da propria suite de testes do CAD0001 -------------
+# ---- Sprint 4: validacao da propria suite de testes --------------------------
 SITUACOES = ["Caminho feliz", "Fronteira", "Exceção"]
 TEXTO_UNIDADE = (
     "Nível de teste: unidade. A função de cálculo é testada isolada do resto do sistema. A ferramenta faz o "
@@ -1641,24 +1647,14 @@ TEXTO_UNIDADE = (
     "valor esperado vem da especificação. Não são necessários stubs, porque a função não chama outros módulos.")
 
 
-def regra_do_caso(caso) -> int:
-    """Regra do combinado (1 a 4) que o caso verifica em primeiro lugar."""
-    valores = caso["entradas"]
-    if any(v is not None and v < 0 for v in valores):
-        return 3
-    if any(v is None for v in valores):
-        return 2
-    return 4
+def regra_do_caso(caso):
+    """(numero, regra) do combinado que o caso verifica em primeiro lugar."""
+    chave = cp.regra_do_caso(SPEC, caso["entradas"])
+    return next((i, r) for i, r in enumerate(REGRAS, 1) if r["chave"] == chave)
 
 
-def situacao_do_caso(caso, epsilon) -> str:
-    """As tres frentes do teste de unidade: caminho feliz, fronteira e excecao."""
-    valores = caso["entradas"]
-    if any(v is not None and v in (FRONTEIRA, FRONTEIRA - epsilon) for v in valores):
-        return "Fronteira"
-    if any(v is None or v < 0 for v in valores):
-        return "Exceção"
-    return "Caminho feliz"
+def situacao_do_caso(caso) -> str:
+    return cp.situacao_do_caso(SPEC, caso["entradas"])
 
 
 def texto_asercao(caso) -> str:
@@ -1666,7 +1662,7 @@ def texto_asercao(caso) -> str:
     return f"assert {FUNCAO_ALVO}({argumentos}) == {caso['esperado']}"
 
 
-def tabela_asercoes(casos, epsilon) -> pd.DataFrame:
+def tabela_asercoes(casos) -> pd.DataFrame:
     linhas = []
     for c in casos:
         if c["status"] == "Aprovado":
@@ -1675,21 +1671,22 @@ def tabela_asercoes(casos, epsilon) -> pd.DataFrame:
             resultado = f"✕ Falhou: obteve {'erro' if c['erro'] else c['obtido']}"
         else:
             resultado = "— sem resposta definida"
-        regra = regra_do_caso(c)
-        linhas.append({"Teste": c["id"], "Situação": situacao_do_caso(c, epsilon),
-                       "Regra verificada": f"{regra}. {REGRAS_SIMPLES[regra - 1][0]}",
+        numero, regra = regra_do_caso(c)
+        linhas.append({"Teste": c["id"], "Situação": situacao_do_caso(c),
+                       "Regra verificada": f"{numero}. {regra['titulo']}",
                        "Asserção": texto_asercao(c) if c["status"] != "Sem oráculo" else "—",
                        "Resultado": resultado})
     return pd.DataFrame(linhas)
 
 
-def validar_suite(casos, casos_base, nominal, programa, epsilon, qualidade, analise, mutacao) -> dict:
+def validar_suite(casos, casos_base, programa, epsilon, qualidade, analise, mutacao) -> dict:
     """Sprint 4: antes do veredito, confere se a propria suite e confiavel."""
     q, cob = qualidade, analise["cobertura"]
     nos, arestas, usos = cob["Todos-Nós"], cob["Todas-Arestas"], analise["criterios"]["Todos-Usos"]
     regras = [n for n, _ in situacao_das_regras({"casos_lista": casos, "qualidade": q})]
-    por_situacao = {s: sum(situacao_do_caso(c, epsilon) == s for c in casos) for s in SITUACOES}
-    isolados = sum(sum(v != nominal for v in c["entradas"]) == 1 for c in casos_base)
+    por_situacao = {s: sum(situacao_do_caso(c) == s for c in casos) for s in SITUACOES}
+    comuns = [p["comum"] for p in SPEC["params"]]
+    isolados = sum(sum(v != comum for v, comum in zip(c["entradas"], comuns)) <= 1 for c in casos_base)
     repetidos = 0
     for c in casos:                                   # segunda execucao de toda a suite
         r = motor.executar_funcao(programa, c["entradas"], epsilon)
@@ -1700,7 +1697,7 @@ def validar_suite(casos, casos_base, nominal, programa, epsilon, qualidade, anal
         {"pergunta": "As respostas certas vêm da regra, e não do código?",
          "tecnico": "Oráculo independente da implementação", "ok": q["sem_oraculo"] == 0,
          "curto": f"{com_oraculo} de {q['total']}",
-         "evidencia": f"O esperado é calculado só pelas quatro regras do manual. {com_oraculo} de {q['total']} "
+         "evidencia": f"O esperado é calculado só pela especificação. {com_oraculo} de {q['total']} "
                       "testes têm resposta esperada definida."},
         {"pergunta": "Toda regra do combinado foi testada?",
          "tecnico": "Rastreabilidade: regra → teste", "ok": all(regras),
@@ -1755,20 +1752,20 @@ def script_de_testes(casos, arquivo: str) -> str:
         if c["status"] == "Sem oráculo":
             continue
         entradas = ", ".join("None" if v is None else f'D("{v}")' for v in c["entradas"])
-        regra = regra_do_caso(c)
-        linhas.append(f'    ("{c["id"]}", "Regra {regra}: {REGRAS_SIMPLES[regra - 1][0]}", ({entradas}), '
+        numero, regra = regra_do_caso(c)
+        linhas.append(f'    ("{c["id"]}", "Regra {numero}: {regra["titulo"]}", ({entradas}), '
                       f'D("{c["esperado"]}")),')
     casos_txt = "\n".join(linhas)
     return f'''"""
-Testes de unidade de {FUNCAO_ALVO} (CAD0001), gerados pelo TestingStudio.
+Testes de unidade de {FUNCAO_ALVO}, gerados pelo TestingStudio.
 
 O resultado esperado de cada teste vem da especificacao (oraculo), nunca do codigo.
 Este arquivo e o driver: le o fonte 4GL, chama a funcao e confere cada assercao.
 
 Como rodar: deixe este arquivo na pasta do TestingStudio, junto do motor.py e do
 {arquivo}, e use um dos comandos:
-    python test_cad0001.py
-    python -m pytest -v test_cad0001.py
+    python test_{FUNCAO_ALVO}.py
+    python -m pytest -v test_{FUNCAO_ALVO}.py
 """
 from decimal import Decimal as D
 from pathlib import Path
@@ -1797,7 +1794,7 @@ def _unidade():
     funcao = motor.localizar_funcao(_ler_fonte(), FUNCAO)
     assert funcao is not None, f"FUNCTION {{FUNCAO}} nao encontrada em {{ARQUIVO.name}}"
     programa = motor.compilar_funcao(funcao["parametros"], funcao["corpo"], funcao["linha"], FUNCAO)
-    return programa, motor.tipo_decimal(funcao["corpo"])[2]
+    return programa, motor.epsilon_do_resultado(programa)
 
 
 UNIDADE = _unidade()
@@ -1812,7 +1809,7 @@ except ImportError:
 
 
 @_parametrizar
-def test_cad0001(teste, regra, entradas, esperado):
+def test_{FUNCAO_ALVO}(teste, regra, entradas, esperado):
     programa, epsilon = UNIDADE
     r = motor.executar_funcao(programa, list(entradas), epsilon)
     assert r["erro"] is None, f"{{teste}} | {{regra}} | a funcao parou com erro: {{r['erro']}}"
@@ -1823,7 +1820,7 @@ if __name__ == "__main__":
     falhas = 0
     for caso in CASOS:
         try:
-            test_cad0001(*caso)
+            test_{FUNCAO_ALVO}(*caso)
             print(f"OK      {{caso[0]}}")
         except AssertionError as erro:
             falhas += 1
@@ -1892,18 +1889,18 @@ if "fonte_original" not in st.session_state:
 original = st.session_state["fonte_original"]
 identificacao = {"arquivo": st.session_state["fonte_nome"], "linhas": len(original.splitlines()),
                  "quando": st.session_state["fonte_quando"], "sha": st.session_state["fonte_sha"]}
-st.html(html_faixa(identificacao))
+lugar_da_faixa = st.empty()       # preenchida depois que a funcao e escolhida
 
 aba_laudo, aba_programa, aba_s1, aba_s2, aba_s3, aba_s4, aba_apresentar, aba_fontes = st.tabs(
-    ["Laudo de qualidade", "Programa", "Sprint 1: caixa-preta", "Sprint 2: caixa-branca",
+    ["Laudo de qualidade", "Programa e especificação", "Sprint 1: caixa-preta", "Sprint 2: caixa-branca",
      "Sprint 3: dados e mutação", "Sprint 4: validação", "Apresentar", "Fontes"])
 
-# ======================= PROGRAMA ===========================================
+# ======================= PROGRAMA E ESPECIFICACAO ============================
 with aba_programa:
     st.html(html_explica("O programa analisado",
                          "Este é o código que a ferramenta lê e executa. Você pode editar o texto aqui mesmo para "
                          "testar uma correção: todas as abas são recalculadas na hora, sem mexer no arquivo original."))
-    fonte = st.text_area("Código-fonte do CAD0001", key="fonte_editado", height=320)
+    fonte = st.text_area("Código-fonte", key="fonte_editado", height=320)
     alterado = fonte != original
     col_a, col_b, _ = st.columns([1.4, 1.4, 4])
     if alterado:
@@ -1915,60 +1912,215 @@ with aba_programa:
         st.warning("O fonte foi alterado nesta página. Os testes rodam sobre a versão editada, "
                    "não sobre o arquivo original.", icon=":material/edit:")
 
-funcao = motor.localizar_funcao(fonte, FUNCAO_ALVO)
-if funcao is None:
-    st.error(f"Não encontrei 'FUNCTION {FUNCAO_ALVO}(...) ... END FUNCTION' neste fonte.")
-    st.stop()
-parametros, corpo, linha_funcao = funcao["parametros"], funcao["corpo"], funcao["linha"]
-tipo = motor.tipo_decimal(corpo)
-if tipo is None or len(parametros) != 3:
-    st.error("A função precisa ter 3 parâmetros e uma declaração DECIMAL(precisão, escala).")
-    st.stop()
-precisao, escala, epsilon, maximo = tipo
-try:
-    programa = motor.compilar_funcao(parametros, corpo, linha_funcao, FUNCAO_ALVO)
-except motor.Erro4GL as problema:
-    st.error(f"Não consegui interpretar a função: {problema}. "
-             "O interpretador entende DEFINE, IF/THEN/ELSE, WHILE, LET e RETURN.")
+# Quais funcoes do arquivo podem ser testadas (recebem parametros numericos e o interpretador entende).
+testaveis, descartadas = [], []
+for candidata in motor.listar_funcoes(fonte):
+    if not candidata["parametros"]:
+        descartadas.append((candidata, "não recebe parâmetros: não há entrada para variar"))
+        continue
+    try:
+        compilada = motor.compilar_funcao(candidata["parametros"], candidata["corpo"], candidata["linha"],
+                                          candidata["nome"])
+    except motor.Erro4GL as problema:
+        descartadas.append((candidata, str(problema)))
+        continue
+    texto_nao_numerico = [p for p in compilada["parametros"] if not motor.tipo_da_variavel(compilada, p)["numerico"]]
+    if texto_nao_numerico:
+        descartadas.append((candidata, "parâmetro não numérico: " + ", ".join(texto_nao_numerico)))
+        continue
+    testaveis.append((candidata, compilada))
+
+
+def tabela_descartadas() -> pd.DataFrame:
+    return pd.DataFrame([{"Função": f["nome"], "Linha": f["linha"], "Por que fica de fora": motivo}
+                         for f, motivo in descartadas])
+
+
+if not testaveis:
+    with aba_programa:
+        st.error("Nenhuma função deste arquivo pode ser testada. A ferramenta testa uma função por vez, que "
+                 "receba parâmetros numéricos e use IF, CASE, WHILE, FOR, LET e RETURN.", icon=":material/error:")
+        if descartadas:
+            st.dataframe(tabela_descartadas(), hide_index=True, width="stretch")
     st.stop()
 
+nomes_testaveis = [f["nome"] for f, _ in testaveis]
+with aba_programa:
+    st.subheader("Função a testar")
+    padrao = next((i for i, n in enumerate(nomes_testaveis) if n.lower() == "cad0001_calcula_valor"), 0)
+    escolhida = st.selectbox(
+        "Função a testar", nomes_testaveis, index=padrao, label_visibility="collapsed",
+        key=f"funcao::{st.session_state['fonte_sha']}",
+        help="O arquivo pode ter várias funções; o laudo examina uma por vez.")
+    if descartadas:
+        with st.expander(f"{len(descartadas)} função(ões) do arquivo ficam de fora dos testes",
+                         icon=":material/info:"):
+            st.dataframe(tabela_descartadas(), hide_index=True, width="stretch")
+funcao, programa = testaveis[nomes_testaveis.index(escolhida)]
+FUNCAO_ALVO = funcao["nome"]
+with lugar_da_faixa:
+    st.html(html_faixa(identificacao))
+parametros, corpo, linha_funcao = programa["parametros"], funcao["corpo"], funcao["linha"]
+epsilon = motor.epsilon_do_resultado(programa)
 texto_funcao = f"FUNCTION {FUNCAO_ALVO}({', '.join(parametros)}){corpo}END FUNCTION"
-justificativa = (
-    f"Os parâmetros são DECIMAL({precisao},{escala}), com {escala} casas decimais. A menor variação "
-    f"representável é ε = 10^-{escala} = {formato_br(epsilon)} (1 centavo). Por isso o Off-Point da "
-    f"fronteira 0,00 é 0,00 − ε = {formato_br(FRONTEIRA - epsilon)}: é o valor inválido mais próximo "
-    "possível do limite, o único capaz de distinguir um '<' de um '<=' no código."
-)
-passo = float(epsilon)
+
+# ---- especificacao (oraculo) ------------------------------------------------------
+chave_spec = f"spec::{st.session_state['fonte_sha']}::{FUNCAO_ALVO}::{','.join(parametros)}"
+exemplo_spec = cp.especificacao_de_exemplo(programa)
+if chave_spec not in st.session_state:
+    st.session_state[chave_spec] = exemplo_spec or cp.especificacao_inicial(programa)
+    st.session_state[chave_spec + "::v"] = 0
+base_spec, versao = st.session_state[chave_spec], st.session_state[chave_spec + "::v"]
+for p in base_spec["params"]:                 # o tipo pode mudar se o DEFINE for editado
+    p["tipo"] = motor.tipo_da_variavel(programa, p["nome"])
+
+
+def trocar_especificacao(nova) -> None:
+    st.session_state[chave_spec] = nova
+    st.session_state[chave_spec + "::v"] += 1
+
+
+def numero_para_tela(valor):
+    return None if valor is None else float(valor)
+
 
 with aba_programa:
     st.subheader("Unidade sob teste")
     st.code("\n".join(f"{numero:>4}  {linha}" for numero, linha in
                       enumerate(texto_funcao.split("\n"), start=linha_funcao)), language=None)
     st.caption("O número à esquerda é a linha no arquivo; é o mesmo usado nos nós do grafo.")
-    c1, c2, c3 = st.columns(3)
-    c1.metric("Tipo dos parâmetros", f"DECIMAL({precisao},{escala})", border=True)
-    c2.metric("Épsilon (ε)", formato_br(epsilon), border=True,
-              help="Menor variação que o tipo representa: 10 elevado a menos a escala.")
-    c3.metric("Maior valor do tipo", formato_br(maximo), border=True)
+    if programa["ignorados"]:
+        st.caption("Linhas ignoradas, porque não mudam o resultado da função: " + ", ".join(
+            f"{comando} (linha {linha})" for linha, comando in programa["ignorados"]) + ".")
+
+    st.subheader("Especificação: de onde vem a resposta certa")
+    st.html(html_explica(
+        "Copie do enunciado, nunca do código",
+        "A caixa-preta compara a resposta do programa com o que o enunciado (ou o manual) promete. Preencha "
+        "com o que está escrito lá: se a regra for copiada do código, um defeito vira regra e nenhum teste "
+        "o encontra." + (" Para o CAD0001 de exemplo, a especificação do manual já vem preenchida."
+                         if exemplo_spec else ""), "caixa_preta"))
+    maior_escala = max(p["tipo"]["escala"] for p in base_spec["params"])
+    menor_passo = float(min(p["tipo"]["epsilon"] for p in base_spec["params"]))
+    formato_num = "%d" if maior_escala == 0 else f"%.{maior_escala}f"
+    editado_params = st.data_editor(
+        pd.DataFrame([{"Parâmetro": p["nome"], "Tipo": p["tipo"]["rotulo"],
+                       "Mínimo válido": numero_para_tela(p["minimo"]), "Máximo válido": numero_para_tela(p["maximo"]),
+                       "Valor comum": numero_para_tela(p["comum"]), "Valor interior": numero_para_tela(p["interior"])}
+                      for p in base_spec["params"]]),
+        key=f"{chave_spec}::params::{versao}", hide_index=True, width="stretch", num_rows="fixed",
+        disabled=["Parâmetro", "Tipo"],
+        column_config={
+            "Mínimo válido": st.column_config.NumberColumn(
+                step=menor_passo, format=formato_num,
+                help="Menor valor aceito pela regra de negócio (o próprio valor é válido). Vazio = sem limite."),
+            "Máximo válido": st.column_config.NumberColumn(
+                step=menor_passo, format=formato_num,
+                help="Maior valor aceito pela regra de negócio (o próprio valor é válido). Vazio = sem limite."),
+            "Valor comum": st.column_config.NumberColumn(
+                step=menor_passo, format=formato_num,
+                help="Valor válido usado nos parâmetros que não estão sendo variados no teste."),
+            "Valor interior": st.column_config.NumberColumn(
+                step=menor_passo, format=formato_num,
+                help="Valor bem dentro da faixa válida (ponto Interior da AVL)."),
+        })
+    e1, e2 = st.columns(2)
+    nulo_escolhido = e1.selectbox(
+        "Parâmetro em branco (NULL)", list(cp.NULO_OPCOES), format_func=cp.NULO_OPCOES.get,
+        index=list(cp.NULO_OPCOES).index(base_spec["nulo"]), key=f"{chave_spec}::nulo::{versao}")
+    retorno_txt = e2.text_input(
+        "Resposta quando algum valor é inválido", key=f"{chave_spec}::retorno::{versao}",
+        value="" if base_spec["retorno_invalido"] is None else str(base_spec["retorno_invalido"]),
+        placeholder="ex.: -1", help="O que a função deve devolver para valor fora da faixa. Vazio = não definido.")
+    nomes_exemplo = ", ".join(parametros)
+    formula_txt = st.text_input(
+        "Resultado esperado nos demais casos (fórmula com os nomes dos parâmetros)",
+        value=base_spec["formula"], key=f"{chave_spec}::formula::{versao}",
+        placeholder=f"ex.: ({parametros[0]} * {parametros[-1]}) + 1", help=f"Parâmetros disponíveis: {nomes_exemplo}. "
+        "Use + - * / e parênteses, como em 4GL.")
+    enunciado_txt = st.text_area("Texto do enunciado (opcional; aparece no laudo)", value=base_spec["enunciado"],
+                                 key=f"{chave_spec}::enunciado::{versao}", height=90)
+    b1, b2, _ = st.columns([1.6, 1.6, 3])
+    if exemplo_spec:
+        b1.button("Usar a especificação do exemplo", width="stretch", icon=":material/restart_alt:",
+                  on_click=trocar_especificacao, args=(cp.especificacao_de_exemplo(programa),))
+    b2.button("Limpar a especificação", width="stretch", icon=":material/backspace:",
+              on_click=trocar_especificacao, args=(cp.especificacao_inicial(programa),))
+    carregada = st.file_uploader(
+        "Carregar uma especificação salva (.json)", type=["json"], key=f"{chave_spec}::arquivo",
+        help="Prepare a especificação antes, salve com o botão 'Salvar a especificação' e carregue aqui.")
+    if carregada is not None and st.session_state.get(chave_spec + "::carregada") != carregada.file_id:
+        try:
+            nova = cp.especificacao_de_json(decodificar(carregada.getvalue()), programa)
+        except cp.ErroEspecificacao as problema:
+            st.error(f"Não foi possível carregar a especificação: {problema}.", icon=":material/error:")
+        else:
+            st.session_state[chave_spec + "::carregada"] = carregada.file_id
+            trocar_especificacao(nova)
+            st.rerun()
+
+# Monta a especificacao a partir do que foi digitado.
+erros_spec = []
+spec = {"params": [], "nulo": nulo_escolhido, "retorno_invalido": None, "formula": formula_txt.strip(),
+        "enunciado": enunciado_txt.strip()}
+for p_base, (_, linha) in zip(base_spec["params"], editado_params.iterrows()):
+    p = {"nome": p_base["nome"], "tipo": p_base["tipo"]}
+    for campo, coluna in (("minimo", "Mínimo válido"), ("maximo", "Máximo válido"),
+                          ("comum", "Valor comum"), ("interior", "Valor interior")):
+        try:
+            p[campo] = cp.decimal_ou_none(linha[coluna], p["tipo"]["epsilon"])
+        except cp.ErroEspecificacao as problema:
+            erros_spec.append(f"{p['nome']}, {coluna.lower()}: {problema}")
+            p[campo] = None
+    spec["params"].append(p)
+cp.completar_valores(spec)
+try:
+    spec["retorno_invalido"] = cp.decimal_ou_none(retorno_txt)
+except cp.ErroEspecificacao as problema:
+    erros_spec.append(f"Resposta para valor inválido: {problema}")
+try:
+    formula = cp.compilar_formula(spec)
+except cp.ErroEspecificacao as problema:
+    erros_spec.append(f"Fórmula: {problema}")
+    formula, spec["formula"] = None, ""
+SPEC = spec
+REGRAS = cp.regras(spec)
+ACHADOS, ACHADOS_SIMPLES = cp.textos_dos_achados(spec)
+maximo = max(p["tipo"]["maximo"] for p in spec["params"])
+
+with aba_programa:
+    for erro in erros_spec:
+        st.error(erro, icon=":material/error:")
+    for aviso in cp.problemas_da_especificacao(spec):
+        st.warning(aviso, icon=":material/rule:")
+    if len(REGRAS) > 1:
+        st.markdown("**Como a ferramenta entendeu a especificação:**\n" +
+                    "\n".join(f"{i}. {r['formal']}" for i, r in enumerate(REGRAS, 1)))
+
+    st.download_button("Salvar a especificação (.json)", cp.especificacao_para_json(spec, FUNCAO_ALVO),
+                       file_name=f"especificacao_{FUNCAO_ALVO}.json", mime="application/json",
+                       icon=":material/save:", key="salvar_spec")
+
+    st.subheader("Tipos de dado e Épsilon")
+    st.dataframe(pd.DataFrame([{"Parâmetro": p["nome"], "Tipo": p["tipo"]["rotulo"],
+                                "Épsilon (ε)": formato_br(p["tipo"]["epsilon"]),
+                                "Menor valor do tipo": formato_br(p["tipo"]["minimo"]),
+                                "Maior valor do tipo": formato_br(p["tipo"]["maximo"]),
+                                "Observação": p["tipo"]["nota"]} for p in spec["params"]]),
+                 hide_index=True, width="stretch")
+
+epsilons = sorted({p["tipo"]["epsilon"] for p in spec["params"]})
+justificativa = (
+    "O Épsilon (ε) é a menor variação que o tipo de dado consegue representar: 10 elevado a menos o número de "
+    "casas decimais. " + ("Aqui, " + "; ".join(
+        f"{', '.join(p['nome'] for p in spec['params'] if p['tipo']['epsilon'] == e)}: ε = {formato_br(e)}"
+        for e in epsilons) + ". ") +
+    "Por isso o Off-Point fica exatamente um ε além da fronteira: é o valor inválido mais próximo possível do "
+    "limite, o único capaz de distinguir um '<' de um '<=' no código.")
+
+with aba_programa:
     st.write(justificativa)
     st.html(html_base("epsilon"))
-    with st.expander("Valores usados na suíte (você pode trocar)"):
-        v1, v2, v3 = st.columns(3)
-        nominal = v1.number_input("Valor dos parâmetros que não variam", min_value=0.0, value=10.0,
-                                  step=passo, format=f"%.{escala}f")
-        interior = v2.number_input("Ponto Interior (válido)", min_value=passo, value=100.0,
-                                   step=passo, format=f"%.{escala}f")
-        exterior = v3.number_input("Ponto Exterior (inválido)", max_value=-2 * passo, value=-100.0,
-                                   step=passo, format=f"%.{escala}f")
-        st.caption("O On-Point (0,00) e o Off-Point (0,00 − ε) são fixos: vêm da regra de negócio e do tipo de dado.")
-
-
-def para_decimal(numero: float) -> Decimal:
-    return Decimal(str(numero)).quantize(epsilon, ROUND_HALF_UP)
-
-
-nominal, interior, exterior = para_decimal(nominal), para_decimal(interior), para_decimal(exterior)
 
 # ======================= SPRINT 1: CAIXA-PRETA ==============================
 with aba_s1:
@@ -1984,28 +2136,26 @@ with aba_s1:
 with aba_extra:
     st.write("Monte seus próprios casos: troque os valores, apague ou acrescente linhas. "
              "Deixe uma célula vazia para enviar NULL. Todas as abas são recalculadas na hora.")
-    sugestoes = pd.DataFrame([
-        {"descricao": "Primeiro valor válido acima da fronteira (0,00 + ε)", "p1": passo, "p2": 10.0, "p3": 10.0},
-        {"descricao": "Todos os parâmetros negativos", "p1": -passo, "p2": -passo, "p3": -passo},
-        {"descricao": "Todos os parâmetros nulos", "p1": None, "p2": None, "p3": None},
-        {"descricao": "Maior valor do tipo no terceiro parâmetro", "p1": 0.0, "p2": 0.0, "p3": float(maximo)},
-    ])
-    coluna_numero = {f"p{i + 1}": st.column_config.NumberColumn(nome, step=passo, format=f"%.{escala}f")
-                     for i, nome in enumerate(parametros)}
+    sugestoes = pd.DataFrame([{"descricao": descricao,
+                               **{f"p{i + 1}": numero_para_tela(v) for i, v in enumerate(valores)}}
+                              for descricao, valores in cp.sugestoes_de_extras(spec)])
+    coluna_numero = {f"p{i + 1}": st.column_config.NumberColumn(
+        p["nome"], step=float(p["tipo"]["epsilon"]), format=f"%.{p['tipo']['escala']}f")
+        for i, p in enumerate(spec["params"])}
     digitado = st.data_editor(
-        sugestoes, key="extras", num_rows="dynamic", hide_index=True, width="stretch",
+        sugestoes, key=f"extras::{chave_spec}::{versao}", num_rows="dynamic", hide_index=True, width="stretch",
         column_config={"descricao": st.column_config.TextColumn("O que este caso verifica", width="large"),
                        **coluna_numero})
 
-casos_base = gerar_suite_base(programa, epsilon, maximo, nominal, interior, exterior)
-casos_extras = gerar_casos_extras(digitado, programa, epsilon, maximo)
+casos_base = cp.gerar_suite_base(programa, spec, formula, epsilon, maximo)
+casos_extras = gerar_casos_extras(digitado, programa, spec, formula, epsilon, maximo)
 casos = casos_base + casos_extras
-qualidade = medir_qualidade(casos, parametros, epsilon)
+qualidade = medir_qualidade(casos, spec)
 
 df_casos = tabela_casos(casos, parametros)
-df_pce = tabela_pce(casos, parametros, maximo)
-df_pontos = tabela_pontos(epsilon, interior, exterior)
-df_pontos_tela = df_pontos.assign(Valor=df_pontos["Valor"].map(formato_br))
+df_pce = tabela_pce(casos, spec)
+df_pontos = tabela_pontos(spec)
+lista_reguas = reguas(spec)
 df_origem = pd.DataFrame([
     {"Dado": "Arquivo", "Valor": st.session_state["fonte_nome"]},
     {"Dado": "Lido em", "Valor": st.session_state["fonte_quando"]},
@@ -2013,7 +2163,10 @@ df_origem = pd.DataFrame([
     {"Dado": "SHA-256 do arquivo", "Valor": st.session_state["fonte_sha"]},
     {"Dado": "Fonte editado na página", "Valor": "Sim" if alterado else "Não"},
     {"Dado": "Unidade sob teste", "Valor": f"{FUNCAO_ALVO}({', '.join(parametros)}), a partir da linha {linha_funcao}"},
-    {"Dado": "Tipo de dado e Épsilon", "Valor": f"DECIMAL({precisao},{escala}); ε = {formato_br(epsilon)}"},
+    {"Dado": "Tipos e Épsilon", "Valor": "; ".join(f"{p['nome']}: {p['tipo']['rotulo']}, ε = "
+                                                   f"{formato_br(p['tipo']['epsilon'])}" for p in spec["params"])},
+    {"Dado": "Especificação", "Valor": "escrita na página (exemplo do manual)" if exemplo_spec and
+     spec["formula"] == exemplo_spec["formula"] else "escrita na página"},
 ])
 
 with aba_extra:
@@ -2029,28 +2182,31 @@ with aba_resumo:
     k[1].metric("Aprovados", qualidade["aprovados"], border=True)
     k[2].metric("Reprovados", qualidade["reprovados"], border=True)
     k[3].metric("Classes", f"{qualidade['classes'][0]}/{qualidade['classes'][1]}", border=True,
-                help="Classes de equivalência cobertas: válida, negativa e nula, com pelo menos um caso por parâmetro.")
+                help="Classes de equivalência cobertas: válida, inválidas e nula de cada parâmetro.")
     k[4].metric("Fronteiras", f"{qualidade['pontos'][0]}/{qualidade['pontos'][1]}", border=True,
-                help="Pontos de fronteira cobertos: On, Off, Interior e Exterior de cada parâmetro.")
+                help="Pontos de fronteira cobertos: On, Off, Interior e Exterior de cada limite de cada parâmetro.")
     k[5].metric("Defeitos", len(qualidade["achados"]), border=True,
                 help="Tipos de defeito revelados: divergências diferentes entre o esperado e o obtido.")
-    if qualidade["reprovados"] == 0:
+    if qualidade["reprovados"] == 0 and qualidade["aprovados"]:
         st.success(f"Nenhuma divergência: os {qualidade['aprovados']} casos com resultado esperado "
                    "definido foram aprovados.", icon=":material/check_circle:")
     for codigo, ids in qualidade["achados"].items():
         titulo, explicacao = ACHADOS[codigo]
         st.error(f"**{titulo}** — {len(ids)} casos ({', '.join(ids)}). {explicacao}", icon=":material/bug_report:")
     if qualidade["sem_oraculo"]:
-        st.info(f"{qualidade['sem_oraculo']} caso(s) sem resultado esperado definido pela especificação "
-                "(estouro do tipo). Isso é uma lacuna da especificação, não do código.", icon=":material/help:")
+        st.info(f"{qualidade['sem_oraculo']} caso(s) sem resultado esperado: a especificação não define a resposta "
+                "(veja a coluna Observação). Complete-a na aba Programa e especificação.", icon=":material/help:")
     st.subheader("Cobertura da suíte planejada")
-    st.html(html_matriz(casos_base, parametros))
-    st.caption("Cada célula é um caso: um parâmetro recebe o valor da coluna e os outros dois ficam em "
-               f"{formato_br(nominal)}. Os testes extras entram nos indicadores acima.")
+    st.html(html_matriz(casos_base, spec))
+    st.caption("Cada célula é um caso: um parâmetro recebe o valor da coluna e os outros ficam no valor comum "
+               f"({', '.join(formato_br(p['comum']) for p in spec['params'])}). Os testes extras entram nos "
+               "indicadores acima.")
 
 with aba_rel:
     st.subheader("Especificação usada como oráculo")
-    st.markdown("\n".join(f"{i}. {regra}" for i, regra in enumerate(ESPECIFICACAO, 1)))
+    if spec["enunciado"]:
+        st.write(spec["enunciado"])
+    st.markdown("\n".join(f"{i}. {r['formal']}" for i, r in enumerate(REGRAS, 1)))
     st.subheader("Particionamento em classes de equivalência (PCE)")
     st.dataframe(df_pce, hide_index=True, width="stretch")
     st.subheader("Análise do valor limite (AVL) e demais casos")
@@ -2058,11 +2214,17 @@ with aba_rel:
     st.caption("Esperado: calculado pela especificação. Obtido: resultado da execução da função carregada.")
 
 with aba_graf:
-    st.subheader("Os quatro pontos testados em torno da fronteira 0,00")
-    st.markdown(svg_regua(df_pontos, epsilon), unsafe_allow_html=True)
-    st.caption("A escala é logarítmica dos dois lados do zero, para que 0,00 e −0,01 não fiquem um sobre o outro. "
-               "Passe o mouse sobre um ponto para ver a condição e o resultado esperado.")
-    st.dataframe(df_pontos_tela, hide_index=True, width="stretch")
+    if not lista_reguas:
+        st.info("A especificação não define faixa válida (mínimo ou máximo), então não há fronteira para testar. "
+                "Preencha-a na aba Programa e especificação.", icon=":material/straighten:")
+    for titulo_regua, svg in lista_reguas:
+        st.markdown(f"**{titulo_regua}**")
+        st.markdown(svg, unsafe_allow_html=True)
+    if lista_reguas:
+        st.caption("A escala é logarítmica dos dois lados da fronteira, para que o On-Point e o Off-Point, "
+                   "separados por um ε, não fiquem um sobre o outro. Passe o mouse sobre um ponto para ver a "
+                   "condição e o resultado esperado.")
+    st.dataframe(df_pontos, hide_index=True, width="stretch")
 
 # ======================= SPRINT 2: CAIXA-BRANCA =============================
 with aba_s2:
@@ -2105,15 +2267,16 @@ with aba_s3:
         mutacao = painel_mutacao(analise, "cad")
 
 # ======================= DADOS CONSOLIDADOS =================================
-suite = validar_suite(casos, casos_base, nominal, programa, epsilon, qualidade, analise, mutacao)
+suite = validar_suite(casos, casos_base, programa, epsilon, qualidade, analise, mutacao)
 achado = achado_central(qualidade, analise, mutacao)
 pacote = {
-    "qualidade": qualidade, "casos": df_casos, "casos_lista": casos, "pce": df_pce, "pontos": df_pontos_tela,
-    "pontos_brutos": df_pontos, "origem": df_origem, "justificativa": justificativa,
+    "qualidade": qualidade, "casos": df_casos, "casos_lista": casos, "pce": df_pce, "pontos": df_pontos,
+    "origem": df_origem, "justificativa": justificativa,
     "analise": analise, "mutacao": mutacao, "achado": achado, "parametros": parametros,
     "nos": tabela_nos(analise), "execucoes": tabela_execucoes(analise), "caminhos": tabela_caminhos(analise),
     "variaveis": tabela_variaveis(analise), "pares": tabela_pares(analise), "mutantes": tabela_mutantes(analise),
-    "suite": suite, "criterios_suite": tabela_criterios_suite(suite), "asercoes": tabela_asercoes(casos, epsilon),
+    "suite": suite, "criterios_suite": tabela_criterios_suite(suite), "asercoes": tabela_asercoes(casos),
+    "reguas": lista_reguas,
     "epsilon": epsilon, **identificacao,
 }
 assinatura = hashlib.sha256((texto_funcao + df_casos.to_csv() + str(por_bloco) + str(mutacao)).encode()).hexdigest()
@@ -2127,11 +2290,11 @@ roteiro = roteiro_do_pitch(pacote)
 def botoes_de_download(chave: str) -> None:
     b1, b2, _ = st.columns([1.7, 1.5, 3])
     b1.download_button("Baixar o laudo completo (HTML)", relatorio_html, key=f"laudo_{chave}",
-                       file_name="laudo_cad0001.html", mime="text/html", width="stretch",
+                       file_name=f"laudo_{FUNCAO_ALVO}.html", mime="text/html", width="stretch",
                        icon=":material/download:", type="primary",
                        help="Abre em qualquer navegador, no modo claro ou escuro. Para PDF, use Ctrl+P.")
     b2.download_button("Baixar casos de teste (CSV)", df_casos.to_csv(index=False, sep=";").encode("utf-8-sig"),
-                       key=f"csv_{chave}", file_name="casos_de_teste_cad0001.csv", mime="text/csv",
+                       key=f"csv_{chave}", file_name=f"casos_de_teste_{FUNCAO_ALVO}.csv", mime="text/csv",
                        width="stretch", icon=":material/table:")
 
 
@@ -2140,7 +2303,7 @@ with aba_s4:
     st.html(html_explica(
         "Em palavras simples",
         "Antes de dizer que o programa tem defeito, é preciso saber se os testes são bons. A Sprint 4 valida a "
-        "própria suíte do CAD0001: de onde vem a resposta certa, se toda regra foi testada, se entraram o uso "
+        f"própria suíte de {FUNCAO_ALVO}: de onde vem a resposta certa, se toda regra foi testada, se entraram o uso "
         "normal, os limites e os erros, e se o resultado se repete.", "validacao"))
     k = st.columns(4)
     k[0].metric("Conferências atendidas", f"{suite['ok']} de {suite['total']}", border=True)
@@ -2164,10 +2327,10 @@ with aba_s4:
                      column_config={"Asserção": st.column_config.TextColumn(width="large"),
                                     "Resultado": st.column_config.TextColumn(width="medium")})
         st.download_button("Baixar estes testes em Python", script_de_testes(casos, pacote["arquivo"]),
-                           key="baixar_testes", file_name="test_cad0001.py", mime="text/x-python",
+                           key="baixar_testes", file_name=f"test_{FUNCAO_ALVO}.py", mime="text/x-python",
                            icon=":material/code:")
         st.caption(f"Para rodar fora da página: deixe o arquivo na pasta do TestingStudio, junto do motor.py e do "
-                   f"{pacote['arquivo']}, e use python test_cad0001.py (ou python -m pytest -v test_cad0001.py).")
+                   f"{pacote['arquivo']}, e use python test_{FUNCAO_ALVO}.py (ou python -m pytest -v test_{FUNCAO_ALVO}.py).")
 
 # ======================= APRESENTAR =========================================
 with aba_apresentar:
