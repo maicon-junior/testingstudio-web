@@ -10,6 +10,8 @@ do enunciado ou do manual do programa (nunca do codigo) e diz:
 Sem interface: tudo aqui pode ser testado sozinho.
 """
 
+VERSAO = 2          # conferida pelo app.py (evita misturar versoes no servidor)
+
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 
 import motor

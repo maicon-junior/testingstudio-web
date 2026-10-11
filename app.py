@@ -30,8 +30,25 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 
-import caixa_preta as cp
+import importlib
+
 import motor
+
+# O Streamlit Cloud guarda os modulos importados na memoria. Quando o app.py e
+# atualizado e o motor.py nao (ou o servidor nao o recarrega), as versoes ficam
+# misturadas. Por isso o app confere a versao e, se preciso, recarrega o motor.
+VERSAO_DO_MOTOR = 2
+if getattr(motor, "VERSAO", 0) < VERSAO_DO_MOTOR:
+    motor = importlib.reload(motor)
+try:
+    import caixa_preta as cp
+    if getattr(cp, "VERSAO", 0) < VERSAO_DO_MOTOR:
+        cp = importlib.reload(cp)
+    ARQUIVOS_DESATUALIZADOS = [nome for nome, modulo in (("motor.py", motor), ("caixa_preta.py", cp))
+                               if getattr(modulo, "VERSAO", 0) < VERSAO_DO_MOTOR]
+except ImportError:
+    cp = None
+    ARQUIVOS_DESATUALIZADOS = ["caixa_preta.py"]
 
 PASTA = Path(__file__).resolve().parent
 ARQUIVO_EXEMPLO = "cad0001_item_calculo.txt"
@@ -40,7 +57,7 @@ FUNCAO_ALVO = ""                 # unidade sob teste
 SPEC = {}                        # especificacao (oraculo) escrita na pagina
 REGRAS = []                      # as regras do combinado, geradas a partir de SPEC
 ACHADOS, ACHADOS_SIMPLES = {}, {}
-formato_br = cp.formato_br
+formato_br = cp.formato_br if cp else str
 
 # O primeiro e o modelo do manual; os outros entram se ele nao estiver liberado.
 MODELOS = ["gemini-2.5-flash", "gemini-3.5-flash-lite", "gemini-3.8-flash"]
@@ -1838,6 +1855,11 @@ st.set_page_config(page_title="TestingStudio, laudo de qualidade", layout="wide"
                    initial_sidebar_state="collapsed")
 st.html(f"<style>{ESTILO_CSS}</style>")
 st.html(html_topo())
+if ARQUIVOS_DESATUALIZADOS:
+    st.error("O servidor está sem a versão atual de " + " e ".join(ARQUIVOS_DESATUALIZADOS) + ". Envie de novo "
+             "esses arquivos ao GitHub (junto do app.py) e, em share.streamlit.io, abra o menu do app e use "
+             "Reboot app.", icon=":material/sync_problem:")
+    st.stop()
 
 # ---- Barra lateral: chave do Gemini (so para os textos opcionais) ----------
 chave_servidor = chave_do_servidor()
