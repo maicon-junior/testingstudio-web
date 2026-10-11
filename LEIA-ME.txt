@@ -7,8 +7,10 @@ O QUE A PAGINA FAZ
             predicativos (P), regioes (R), V(G) pelos tres metodos de McCabe
             e cobertura de nos, arestas e caminhos por caso de teste.
   Sprint 3  Fluxo de dados (pares Def-Uso) e teste de mutacao (escore MS).
-  Sprint 4  Validacao com os gabaritos dos slides, laboratorio de exercicios
-            e roteiro do pitch.
+  Sprint 4  Validacao da propria suite do CAD0001 (oraculo, rastreabilidade,
+            caminho feliz/fronteira/excecao, repetibilidade) e assercoes de
+            teste de unidade, com download dos testes em Python (pytest).
+  Apresentar  Roteiro do pitch e textos com o Gemini.
 
 ARQUIVOS DESTA PASTA
   app.py                     A pagina (leitura do .txt, tabelas, graficos, Gemini).
@@ -66,6 +68,13 @@ MODO CLARO E ESCURO
   A pagina segue o tema do computador. Para trocar na hora: menu de tres
   pontos no canto superior direito, escolha Light (claro) ou Dark (escuro).
   O laudo baixado em HTML tambem segue o tema; para PDF, abra-o e use Ctrl+P.
+
+RODAR OS TESTES FORA DA PAGINA
+  Na aba Sprint 4, Assercoes, baixe o test_cad0001.py e salve nesta pasta
+  (junto do motor.py e do cad0001_item_calculo.txt). Depois, no terminal:
+      python test_cad0001.py
+  ou, com o pytest instalado (pip install pytest):
+      python -m pytest -v test_cad0001.py
 
 PARA USAR NO SEU COMPUTADOR
   De dois cliques em Abrir_TestingStudio.bat.

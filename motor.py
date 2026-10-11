@@ -8,9 +8,9 @@ Tudo o que a pagina mostra nas Sprints 2, 3 e 4 e calculado aqui:
                              complexidade ciclomatica de McCabe e caminhos.
   3. Fluxo de dados        - definicoes, c-usos, p-usos e pares Def-Uso.
   4. Teste de mutacao      - operadores AOR, ROR, COR e LVR e escore de mutacao.
-  5. Validacao             - exemplos das aulas com resultado conhecido (gabarito).
+  5. analisar_fonte        - atalho para analisar qualquer funcao de um texto.
 
-Notacao e criterios: Delamaro, Maldonado e Jino (2007) e slides das aulas.
+Notacao e criterios: Delamaro, Maldonado e Jino (2007).
 """
 
 import itertools
@@ -467,7 +467,7 @@ def construir_grafo(programa, por_bloco: bool = True):
 
     por_bloco=True : no = bloco indivisivel de comandos (definicao formal:
                      comandos em sequencia, sem desvio, formam um unico no).
-    por_bloco=False: um no por comando (como em alguns slides).
+    por_bloco=False: um no por comando (desenho alternativo).
 
     Primeiro liga comando a comando; depois, se pedido, funde as sequencias."""
     comandos = {c["id"]: c for c in todos_os_comandos(programa["comandos"])}
@@ -732,7 +732,7 @@ def analisar_fluxo(programa, grafo):
                 continue                         # redefinida: o caminho deixa de ser livre
             fila += [d for d, _ in sucessores[atual]]
 
-    # Tabela por variavel, no formato do slide: no de definicao, nos c-uso, arestas p-uso.
+    # Tabela por variavel, no formato usual: no de definicao, nos c-uso, arestas p-uso.
     tabela = {}
     for origem, variavel in definicoes:
         linha = tabela.setdefault(variavel, {"defs": set(), "c_usos": set(), "p_usos": set()})
@@ -1033,128 +1033,8 @@ def grafo_em_dot(grafo, nos_cobertos=None, arestas_cobertas=None) -> str:
 
 
 # ==========================================================================
-# 5. VALIDACAO: EXEMPLOS DAS AULAS COM GABARITO
+# 5. ANALISE DE UM TEXTO QUALQUER (usada pelos testes do proprio motor)
 # ==========================================================================
-EXEMPLOS = [
-    {
-        "chave": "if_else", "titulo": "IF-ELSE", "aula": "Aula de 28/09, exemplo 1",
-        "por_bloco": True,
-        "fonte": """FUNCTION exemplo_if_else(saldo)
-    DEFINE saldo, resultado DECIMAL(12,2)
-    IF saldo > 0 THEN
-        LET resultado = 1          # aprovar_compra()
-    ELSE
-        LET resultado = 0          # recusar_compra()
-    END IF
-    RETURN resultado               # finalizar()
-END FUNCTION
-""",
-        "casos": [("T1", (10,)), ("T2", (0,))],
-        "gabarito": {"N": 4, "E": 4, "P": 1, "R": 2, "V(G)": 2},
-    },
-    {
-        "chave": "if_while", "titulo": "IF com WHILE", "aula": "Aula de 28/09, exemplo 2",
-        "por_bloco": True,
-        "fonte": """FUNCTION exemplo_if_while(saldo, dias_atraso)
-    DEFINE saldo, dias_atraso, multa DECIMAL(12,2)
-    LET multa = 0
-    IF saldo > 0 THEN
-        WHILE dias_atraso > 0
-            LET multa = multa + 2              # cobrar_multa()
-            LET dias_atraso = dias_atraso - 1
-        END WHILE
-    END IF
-    RETURN multa
-END FUNCTION
-""",
-        "casos": [("T1", (100, 3)), ("T2", (100, 0)), ("T3", (0, 3))],
-        "gabarito": {"P": 2, "R": 3, "V(G)": 3, "E - N": 1},
-        "observacao": "O slide desenha N = 5 e E = 6 porque cria um nó para o ramo falso do IF, que "
-                      "não tem comando. A ferramenta não cria nó vazio (N = 4, E = 5). A diferença "
-                      "E − N é a mesma, por isso V(G), P e R conferem.",
-    },
-    {
-        "chave": "bhaskara", "titulo": "Função Bhaskara", "aula": "Aula de 09/09, laboratório estrutural A",
-        "por_bloco": True,
-        "fonte": """FUNCTION bhaskara(a, b, c)
-    DEFINE a, b, c, delta, raizes DECIMAL(12,2)
-    LET delta = (b * b) - (4 * a * c)
-    IF delta < 0 THEN
-        LET raizes = 0                 # sem raizes
-    ELSE
-        IF delta = 0 THEN
-            LET raizes = 1             # raiz unica
-        ELSE
-            LET raizes = 2             # duas raizes
-        END IF
-    END IF
-    RETURN raizes
-END FUNCTION
-""",
-        "casos": [("Delta = -4", (1, 0, 1)), ("Delta = 0", (1, 2, 1)), ("Delta = 21", (1, 5, 1))],
-        "gabarito": {"N": 6, "Caminhos completos": 3, "Caminho de Delta = -4": "1-2-6",
-                     "Caminho de Delta = 0": "1-3-4-6", "Caminho de Delta = 21": "1-3-5-6",
-                     "Todos-Nós": "100%", "Todas-Arestas": "100%"},
-        "observacao": "A função devolve a quantidade de raízes reais (0, 1 ou 2); a estrutura de "
-                      "decisão é a mesma do slide.",
-    },
-    {
-        "chave": "pares_du", "titulo": "Pares Def-Uso", "aula": "Aula de 30/09, prática de pares DU",
-        "por_bloco": False,
-        "fonte": """FUNCTION exemplo_du(x)
-    DEFINE v, x, calc DECIMAL(12,2)
-    LET v = 100
-    LET x = x                      # read(x)
-    IF v > x THEN
-        LET calc = v * 0.9
-    END IF
-    RETURN calc
-END FUNCTION
-""",
-        "casos": [("T1", (50,)), ("T2", (200,))],
-        "gabarito": {"N": 5, "Definição de v": "1", "c-uso de v": "4", "p-uso de v": "(3,4), (3,5)"},
-        "observacao": "Aqui o grafo usa um nó por comando, como no slide.",
-    },
-    {
-        "chave": "maior", "titulo": "Mutantes de maior(a, b)", "aula": "Aula de 30/09, exercício de mutação",
-        "por_bloco": True,
-        "fonte": """FUNCTION maior(a, b)
-    DEFINE a, b DECIMAL(12,2)
-    IF a > b THEN
-        RETURN a
-    ELSE
-        RETURN b
-    END IF
-END FUNCTION
-""",
-        "casos": [("T1", (3, 2)), ("T2", (2, 2))],
-        "mutantes_do_slide": [("#1", "IF a >= b"), ("#2", "IF a < b"), ("#3", "IF a <= b"),
-                              ("#4", "IF a = b"), ("#5", "RETURN a")],
-        "gabarito": {"Mutante #1 (a >= b)": "Vivo", "Mutante #2 (a < b)": "Morto",
-                     "Mutante #3 (a <= b)": "Morto", "Mutante #4 (a = b)": "Morto",
-                     "Mutante #5 (else return a)": "Vivo", "Md": 3, "MS": "60%"},
-        "observacao": "O slide lista 5 mutantes e a validação usa exatamente esses 5. No laboratório a "
-                      "ferramenta gera todos os mutantes dos quatro operadores, por isso o escore de lá é outro.",
-    },
-    {
-        "chave": "triangulo", "titulo": "Triângulo e valor limite", "aula": "Aula de 26/08, problema do triângulo",
-        "por_bloco": True,
-        "fonte": """FUNCTION triangulo(a, b, c)
-    DEFINE a, b, c DECIMAL(12,2)
-    IF a + b > c THEN
-        RETURN 1                   # forma triangulo
-    ELSE
-        RETURN 0
-    END IF
-END FUNCTION
-""",
-        "casos": [("(3, 4, 5)", (3, 4, 5)), ("(1, 2, 3)", (1, 2, 3))],
-        "mutantes_do_slide": [(">=", "IF a + b >= c")],
-        "gabarito": {"Mutante >= com (3, 4, 5)": "Vivo", "Mutante >= com (1, 2, 3)": "Morto"},
-    },
-]
-
-
 def _para_decimais(entrada):
     return tuple(None if v is None else Decimal(str(v)) for v in entrada)
 
@@ -1169,58 +1049,3 @@ def analisar_fonte(fonte, casos, por_bloco=True):
     casos = [(rotulo, _para_decimais(entrada)) for rotulo, entrada in casos]
     return analisar(funcao["parametros"], funcao["corpo"], funcao["linha"], epsilon, casos,
                     por_bloco, funcao["nome"])
-
-
-def _estados_dos_mutantes_do_slide(exemplo, casos):
-    """Roda so os mutantes citados no slide. Devolve {rotulo: (estado, morto_por)}."""
-    funcao = localizar_funcao(exemplo["fonte"])
-    programa = compilar_funcao(funcao["parametros"], funcao["corpo"], funcao["linha"])
-    gerados = gerar_mutantes(programa)
-    escolhidos = []
-    for rotulo, texto in exemplo["mutantes_do_slide"]:
-        achado = next(m for m in gerados if m["mutado"] == texto and m["original"] != texto
-                      and (rotulo != "#5" or m["original"] == "RETURN b"))
-        escolhidos.append((rotulo, achado))
-    entradas = [_para_decimais(e) for _, e in casos]
-    avaliados = executar_mutantes(programa, [m for _, m in escolhidos], entradas, EPSILON_PADRAO,
-                                  [r for r, _ in casos])
-    return {rotulo: avaliado["estado"] for (rotulo, _), avaliado in zip(escolhidos, avaliados)}
-
-
-def validar_exemplos():
-    """Compara o que o motor calcula com o gabarito dos slides.
-    Devolve linhas {exemplo, aula, medida, esperado, obtido, confere}."""
-    linhas = []
-    for exemplo in EXEMPLOS:
-        analise = analisar_fonte(exemplo["fonte"], exemplo["casos"], exemplo["por_bloco"])
-        m = analise["metricas"]
-        obtido = {"N": m["N"], "E": m["E"], "P": m["P"], "R": m["R"], "V(G)": m["V"],
-                  "E - N": m["E"] - m["N"], "Caminhos completos": len(analise["caminhos"])}
-        for nome, (feito, total) in analise["cobertura"].items():
-            obtido[nome] = f"{round(100 * feito / total)}%" if total else "-"
-        for execucao in analise["execucoes"]:
-            obtido[f"Caminho de {execucao['caso']}"] = "-".join(map(str, execucao["nos"]))
-        if exemplo["chave"] == "pares_du":
-            v = analise["fluxo_tabela"]["v"]
-            obtido["Definição de v"] = ", ".join(map(str, v["defs"]))
-            obtido["c-uso de v"] = ", ".join(map(str, v["c_usos"]))
-            arestas = analise["grafo"]["arestas"]
-            obtido["p-uso de v"] = ", ".join(f"({arestas[i][0]},{arestas[i][1]})" for i in v["p_usos"])
-        if exemplo["chave"] == "maior":
-            estados = _estados_dos_mutantes_do_slide(exemplo, exemplo["casos"])
-            nomes = {"#1": "Mutante #1 (a >= b)", "#2": "Mutante #2 (a < b)", "#3": "Mutante #3 (a <= b)",
-                     "#4": "Mutante #4 (a = b)", "#5": "Mutante #5 (else return a)"}
-            for rotulo, estado in estados.items():
-                obtido[nomes[rotulo]] = estado
-            mortos = sum(1 for e in estados.values() if e == "Morto")
-            obtido["Md"] = mortos
-            obtido["MS"] = f"{round(escore_de_mutacao(mortos, len(estados), 0))}%"
-        if exemplo["chave"] == "triangulo":
-            for rotulo, entrada in exemplo["casos"]:
-                estado = _estados_dos_mutantes_do_slide(exemplo, [(rotulo, entrada)])[">="]
-                obtido[f"Mutante >= com {rotulo}"] = estado
-        for medida, esperado in exemplo["gabarito"].items():
-            linhas.append({"exemplo": exemplo["titulo"], "aula": exemplo["aula"], "medida": medida,
-                           "esperado": str(esperado), "obtido": str(obtido.get(medida, "?")),
-                           "confere": str(obtido.get(medida, "?")) == str(esperado)})
-    return linhas

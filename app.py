@@ -6,7 +6,7 @@ Teste de Software I, Univille, Prof. Frank Piffer
   Sprint 1           : caixa-preta, classes de equivalencia (PCE) e valor limite (AVL) com Epsilon.
   Sprint 2           : caixa-branca, grafo de fluxo de controle, nos, arestas e V(G) de McCabe.
   Sprint 3           : fluxo de dados (pares Def-Uso) e teste de mutacao (escore MS).
-  Sprint 4           : validacao com gabaritos das aulas, laboratorio e roteiro de apresentacao.
+  Sprint 4           : validacao da propria suite (oraculo, rastreabilidade, assercoes) e pitch.
 
 Este arquivo cuida da PAGINA (leitura do .txt, laudo, tabelas, Gemini).
 Os calculos das Sprints 2 a 4 e o interpretador de 4GL ficam em motor.py.
@@ -56,14 +56,14 @@ MODELOS = ["gemini-2.5-flash", "gemini-3.5-flash-lite", "gemini-3.8-flash"]
 
 # --------------------------------------------------------------------------
 # Fontes. Dados conferidos em: Repositorio da USP (livro e capitulo de teste
-# estrutural), dblp e IEEE (artigos). Os capitulos 2 e 4 do livro-base seguem
-# a numeracao citada nos slides da disciplina.
+# estrutural), dblp e IEEE (artigos).
 # --------------------------------------------------------------------------
 REFERENCIAS = [
     {"n": 1, "grupo": "Livro-base da disciplina", "curto": "Delamaro, Maldonado e Jino (2007)",
      "texto": "DELAMARO, M. E.; MALDONADO, J. C.; JINO, M. (org.). Introdução ao teste de software. "
               "Rio de Janeiro: Elsevier, 2007. 408 p. ISBN 978-85-352-2634-8.",
-     "uso": "Fundamentos e vocabulário de todo o laudo: teste funcional (cap. 2), oráculo e teste de mutação.",
+     "uso": "Fundamentos e vocabulário de todo o laudo: teste funcional (cap. 2), oráculo, teste de mutação "
+            "e teste de unidade com asserções e driver (cap. 1 e 4).",
      "link": "https://repositorio.usp.br/item/001726007"},
     {"n": 2, "grupo": "Livro-base da disciplina", "curto": "Barbosa et al. (2007)",
      "texto": "BARBOSA, E. F.; CHAIM, M. L.; VINCENZI, A. M. R.; DELAMARO, M. E.; JINO, M.; MALDONADO, J. C. "
@@ -122,23 +122,17 @@ REFERENCIAS = [
               "(PCE e AVL) do CAD0001. Teste de Software I (ementa 62371). Joinville: Univille, 2026.",
      "uso": "Especificação do CAD0001, usada como oráculo, e a tabela dos quatro pontos de fronteira.",
      "link": ""},
-    {"n": 13, "grupo": "Material da disciplina", "curto": "Slides da disciplina (2026)",
-     "texto": "PIFFER, F. Teste de Software I: slides das aulas de 19/08, 26/08, 09/09, 16/09, 21/09, 28/09, "
-              "30/09 e 05/10/2026. Joinville: Univille, 2026.",
-     "uso": "19/08 e 05/10: oráculo. 26/08: PCE, AVL e o problema do triângulo. 09/09 e 21/09: grafo, "
-            "caminhos e Bhaskara. 28/09: McCabe. 30/09: pares DU e mutação. São os seis exercícios da validação.",
-     "link": ""},
 ]
 REF = {r["n"]: r for r in REFERENCIAS}
 
 # Em que cada parte do laudo se apoia: (numero da referencia, detalhe).
 BASES = {
-    "caixa_preta": [(1, "cap. 2"), (3, ""), (4, ""), (8, "seções 4.2.1 e 4.2.2"), (12, ""), (13, "aula de 26/08")],
+    "caixa_preta": [(1, "cap. 2"), (3, ""), (4, ""), (8, "seções 4.2.1 e 4.2.2"), (12, "")],
     "epsilon": [(11, ""), (12, "Tabela 1")],
-    "caixa_branca": [(2, "cap. 4"), (5, ""), (8, "seções 4.3.1 e 4.3.2"), (13, "aulas de 09/09, 21/09 e 28/09")],
-    "fluxo": [(2, "cap. 4"), (6, ""), (13, "aula de 30/09")],
-    "mutacao": [(1, "teste de mutação"), (7, ""), (13, "aula de 30/09")],
-    "validacao": [(10, "cap. 4"), (1, "oráculo"), (13, "aulas de 19/08 e 05/10")],
+    "caixa_branca": [(2, "cap. 4"), (5, ""), (8, "seções 4.3.1 e 4.3.2")],
+    "fluxo": [(2, "cap. 4"), (6, "")],
+    "mutacao": [(1, "teste de mutação"), (7, "")],
+    "validacao": [(1, "cap. 1 e 4"), (10, "cap. 4"), (12, "")],
 }
 
 GLOSSARIO = [
@@ -156,6 +150,10 @@ GLOSSARIO = [
     ("Escore de mutação", "A porcentagem de defeitos plantados que os testes perceberam. Mede a qualidade dos próprios testes."),
     ("Mutante equivalente", "Uma alteração que não muda o comportamento; nenhum teste consegue percebê-la."),
     ("Caminho infactível", "Um caminho que existe no mapa, mas que nenhum dado real consegue percorrer."),
+    ("Teste de unidade", "Testar uma peça do programa sozinha, aqui a função de cálculo, antes de juntá-la ao resto."),
+    ("Asserção", "Uma afirmação que o teste confere: \"com estes valores, a resposta tem de ser esta\". Se não for, o teste falha."),
+    ("Driver", "O programa que chama a peça em teste com os dados de cada caso e recolhe a resposta. Aqui, a própria ferramenta."),
+    ("Rastreabilidade", "Poder apontar, para cada regra do combinado, quais testes a verificam."),
 ]
 
 
@@ -675,7 +673,7 @@ def estado_geral(d) -> str:
 def html_veredito(d) -> str:
     q, mut = d["qualidade"], d["mutacao"]
     estado = estado_geral(d)
-    ok, total = d["validacao_resumo"]
+    v = d["suite"]
     causas = [ACHADOS_SIMPLES[c][0].lower() for c in q["achados"]]
     if estado == "ruim":
         selo = chip("Reprovado na conferência", "ruim")
@@ -694,7 +692,7 @@ def html_veredito(d) -> str:
                  "defeitos plantados de propósito.")
     fatos = [("Testes executados", q["total"]), ("Formas de teste aplicadas", 4),
              ("Defeitos plantados percebidos", f"{mut['Md']}/{mut['Mt'] - mut['Me']}"),
-             ("Conferências da própria ferramenta", f"{ok}/{total}")]
+             ("Conferências dos próprios testes", f"{v['ok']}/{v['total']}")]
     return (f'<section class="ts-veredito ts-{estado}"><div>{selo}<h2>{esc(titulo)}</h2><p>{esc(texto)}</p></div>'
             '<dl class="ts-fatos">' + "".join(f"<div><dt>{esc(r)}</dt><dd>{esc(v)}</dd></div>" for r, v in fatos)
             + "</dl></section>")
@@ -844,20 +842,25 @@ def html_exemplo(d) -> str:
 
 
 def html_confianca(d) -> str:
-    ok, total = d["validacao_resumo"]
-    por_exemplo = {}
-    for linha in d["validacao_linhas"]:
-        chave = f"{linha['exemplo']} ({linha['aula'].split(',')[0].replace('Aula de', 'aula de')})"
-        feito, n = por_exemplo.get(chave, (0, 0))
-        por_exemplo[chave] = (feito + int(linha["confere"]), n + 1)
-    itens = "".join(f"<li>{esc(nome)}<span>{feito} de {n}</span></li>" for nome, (feito, n) in por_exemplo.items())
-    classe = "" if ok == total else " ts-placar-ruim"
-    return (f'<div class="ts-confianca"><div class="ts-placar{classe}"><b>{ok}/{total}</b><span>conferências iguais '
-            f'ao gabarito das aulas</span></div><div class="ts-cartao"><h3>A ferramenta também foi testada</h3>'
-            f'<p>Antes de examinar o CAD0001, a própria ferramenta passou por {len(por_exemplo)} exercícios resolvidos em '
-            f'aula, cujas respostas já eram conhecidas. Em {ok} de {total} conferências ela chegou ao mesmo resultado '
-            'do gabarito.</p><ul class="ts-lista">' + itens + '</ul>'
-            '<p style="margin-top:.8rem"><b>Quem decide o que é certo.</b> A resposta esperada de cada teste vem da '
+    """A suite do CAD0001 tambem foi validada (Sprint 4): o resumo para leigos."""
+    v, q = d["suite"], d["qualidade"]
+    tudo = v["ok"] == v["total"]
+    itens = "".join(f'<li>{"✓" if c["ok"] else "!"}&nbsp; {esc(c["pergunta"])}<span>{esc(c["curto"])}</span></li>'
+                    for c in v["criterios"])
+    if tudo and q["reprovados"]:
+        conclusao = "Como os testes passaram em todas as conferências, o defeito apontado é do programa, e não do teste."
+    elif tudo:
+        conclusao = "Como os testes passaram em todas as conferências, a aprovação do programa é confiável."
+    else:
+        conclusao = "Os itens marcados com ! mostram onde os testes ainda podem melhorar; a Sprint 4 detalha cada um."
+    return (f'<div class="ts-confianca"><div class="ts-placar{"" if tudo else " ts-placar-ruim"}"><b>{v["ok"]}/{v["total"]}</b>'
+            '<span>conferências dos próprios testes atendidas</span></div><div class="ts-cartao">'
+            '<h3>Antes do veredito, os testes foram testados</h3>'
+            '<p>Um laudo só vale tanto quanto os testes que o sustentam. Por isso a suíte do CAD0001 passou por '
+            f'{v["total"]} conferências antes de qualquer conclusão sobre o programa:</p>'
+            f'<ul class="ts-lista">{itens}</ul>'
+            f'<p style="margin-top:.8rem"><b>{esc(conclusao)}</b></p>'
+            '<p style="margin-top:.5rem"><b>Quem decide o que é certo.</b> A resposta esperada de cada teste vem da '
             'regra escrita no manual, e não do próprio código. Assim o programa nunca é comparado com ele mesmo.</p>'
             "</div></div>")
 
@@ -993,7 +996,7 @@ def gerar_relatorio_html(d) -> str:
     e imprime em PDF com Ctrl+P."""
     q, a, mut, m = d["qualidade"], d["analise"], d["mutacao"], d["analise"]["metricas"]
     cob, crit = a["cobertura"], a["criterios"]
-    ok, total = d["validacao_resumo"]
+    v = d["suite"]
     parecer = (f"<h2>Parecer do Gemini ({esc(d['parecer_modelo'])})</h2>"
                f"<pre class='parecer'>{esc(d['parecer'])}</pre>") if d.get("parecer") else ""
     dot = json.dumps(motor.grafo_em_dot(a["grafo"], set(a["nos_cobertos"]), set(a["arestas_cobertas"]))
@@ -1048,7 +1051,7 @@ pre.parecer {{ white-space:pre-wrap; font-family:inherit; background: var(--ts-r
 {html_estacoes(d)}
 {html_secao("O defeito, em um exemplo" if caso_exemplar(d) else "Um exemplo de teste", "Um dos testes, do começo ao fim.")}
 {html_exemplo(d)}
-{html_secao("Por que confiar neste laudo")}
+{html_secao("Por que confiar nestes testes")}
 {html_confianca(d)}
 {html_secao("O que este laudo não cobre")}
 {html_limites()}
@@ -1094,10 +1097,14 @@ pre.parecer {{ white-space:pre-wrap; font-family:inherit; background: var(--ts-r
 <p>MS = Md ÷ (Mt − Me) × 100 = {mut['Md']} ÷ ({mut['Mt']} − {mut['Me']}) × 100 = <b>{texto_ms(mut)}</b></p>
 {tabela(d['mutantes'])}
 
-<h2 class="anexo">Anexo E. Validação da ferramenta com os gabaritos das aulas</h2>
+<h2 class="anexo">Anexo E. Validação da suíte de testes</h2>
 {base("validacao")}
-<p>{ok} de {total} verificações conferem com os gabaritos dos slides das aulas.</p>
-{tabela(d['validacao'])}
+<div class="kpis"><div class="kpi"><b>{v['ok']}/{v['total']}</b><span>conferências atendidas</span></div>
+<div class="kpi"><b>{v['asercoes']}</b><span>asserções executadas</span></div><div class="kpi"><b>{v['passaram']}</b><span>passaram</span></div>
+<div class="kpi"><b>{v['falharam']}</b><span>falharam (acusaram defeito)</span></div></div>
+<p>{esc(TEXTO_UNIDADE)}</p>
+<h3>Conferências da suíte</h3>{tabela(d['criterios_suite'])}
+<h3>Asserções executadas pelo driver</h3>{tabela(d['asercoes'])}
 {parecer}
 <h2 class="anexo">Fontes</h2>
 {html_fontes()}
@@ -1201,7 +1208,9 @@ def _dados_para_o_gemini(fonte_funcao, d) -> str:
     """Bloco de dados comum aos dois pedidos (parecer e fala do pitch)."""
     q, a, mut, m = d["qualidade"], d["analise"], d["mutacao"], d["analise"]["metricas"]
     cob, crit = a["cobertura"], a["criterios"]
-    ok, total = d["validacao_resumo"]
+    v = d["suite"]
+    conferencias = "\n".join(f"- {c['pergunta']} ({c['tecnico']}): {c['curto']}, "
+                             f"{'atendido' if c['ok'] else 'pendente'}" for c in v["criterios"])
     achados = "\n".join(f"- {ACHADOS[c][0]}: casos {', '.join(ids)}" for c, ids in q["achados"].items()) \
         or "- nenhum"
     regras = "\n".join(f"{i}. {r}" for i, r in enumerate(ESPECIFICACAO, 1))
@@ -1247,7 +1256,10 @@ mutantes_vivos_csv:
 {vivos.to_csv(index=False) if len(vivos) else 'nenhum'}
 </mutacao>
 
-<validacao_da_ferramenta>{ok} de {total} verificações conferem com os gabaritos das aulas</validacao_da_ferramenta>
+<validacao_da_suite>
+{v['ok']} de {v['total']} conferências atendidas | asserções: {v['asercoes']}, passaram {v['passaram']}, falharam {v['falharam']}
+{conferencias}
+</validacao_da_suite>
 
 <achado_central>{d['achado']}</achado_central>
 
@@ -1270,8 +1282,9 @@ Estrutura do parecer:
 2. Caixa-preta: classes de equivalência, valor limite e justificativa do Épsilon.
 3. Caixa-branca: nós, arestas, V(G) pelos três métodos e cobertura de nós, arestas e caminhos.
 4. Fluxo de dados e mutação: pares Def-Uso cobertos, escore de mutação e mutantes vivos.
-5. O que as três técnicas dizem em conjunto, defeitos revelados e correção sugerida no fonte.
-6. Próximos testes recomendados.
+5. Validação da suíte: oráculo, rastreabilidade, asserções e as conferências atendidas.
+6. O que as técnicas dizem em conjunto, defeitos revelados e correção sugerida no fonte.
+7. Próximos testes recomendados.
 
 Use somente os dados abaixo, que já foram calculados pela ferramenta. Ao citar literatura,
 use apenas as referências listadas e não invente citações literais nem números de página.
@@ -1282,7 +1295,7 @@ use apenas as referências listadas e não invente citações literais nem núme
 def montar_prompt_pitch(fonte_funcao, d) -> str:
     return f"""Você vai ajudar um estudante a apresentar um pitch de 5 minutos do TestingStudio Web,
 uma ferramenta web que audita o programa CAD0001 (4GL/Logix) com caixa-preta, caixa-branca,
-fluxo de dados e teste de mutação. O público é o professor e a turma de Teste de Software.
+fluxo de dados, teste de mutação e validação da suíte. O público é o professor e a turma de Teste de Software.
 
 Escreva, em português do Brasil, a FALA do pitch, em primeira pessoa e tom natural, dividida em:
 problema, solução, demonstração (o que mostrar em cada passo), evidências com os números,
@@ -1302,11 +1315,6 @@ def analise_em_cache(parametros, corpo, linha, epsilon, casos, por_bloco, nome):
     """Guarda o resultado da analise: a pagina e reexecutada a cada clique e
     nao precisa refazer grafo, fluxo de dados e mutantes se nada mudou."""
     return motor.analisar(list(parametros), corpo, linha, epsilon, list(casos), por_bloco, nome)
-
-
-@st.cache_data(show_spinner=False)
-def validacao_em_cache():
-    return motor.validar_exemplos()
 
 
 def texto_entrada(entrada) -> str:
@@ -1366,7 +1374,7 @@ def tabela_caminhos(a) -> pd.DataFrame:
 
 
 def tabela_variaveis(a) -> pd.DataFrame:
-    """Mesmo formato do slide de pares DU: variavel, no de definicao, nos c-uso, arestas p-uso."""
+    """Formato usual da tabela de pares DU: variavel, no de definicao, nos c-uso, arestas p-uso."""
     arestas = a["grafo"]["arestas"]
     return pd.DataFrame([{
         "Variável": variavel,
@@ -1562,12 +1570,6 @@ def painel_mutacao(a, chave: str) -> dict:
     return r
 
 
-def tabela_validacao(linhas) -> pd.DataFrame:
-    return pd.DataFrame([{"Exemplo": l["exemplo"], "Origem": l["aula"], "Medida": l["medida"],
-                          "Gabarito do slide": l["esperado"], "Ferramenta": l["obtido"],
-                          "Resultado": "✓ Confere" if l["confere"] else "✕ Diverge"} for l in linhas])
-
-
 def achado_central(q, a, mut) -> str:
     """Frase que liga as tres tecnicas, calculada a partir dos resultados."""
     nos, arestas = a["cobertura"]["Todos-Nós"], a["cobertura"]["Todas-Arestas"]
@@ -1577,7 +1579,7 @@ def achado_central(q, a, mut) -> str:
                 f"{texto_ms(mut)}, e mesmo assim a caixa-preta reprovou {q['reprovados']} casos. "
                 "O motivo é um requisito que não foi escrito no código: teste estrutural e mutação só "
                 "enxergam o código que existe, e requisito omitido só aparece no teste funcional. "
-                "É o que a aula de 21/09 chama de ilusão do teste estrutural.")
+                "É a ilusão do teste estrutural: cobertura total não prova que o requisito foi implementado.")
     if q["reprovados"]:
         return (f"A caixa-preta reprovou {q['reprovados']} casos e a cobertura estrutural ainda não é "
                 f"total (nós: {porcento(nos)}, arestas: {porcento(arestas)}). Há defeito a corrigir e "
@@ -1592,7 +1594,7 @@ def achado_central(q, a, mut) -> str:
 def roteiro_do_pitch(d) -> str:
     """Roteiro de apresentacao em Markdown, com os numeros desta auditoria."""
     q, a, mut, m = d["qualidade"], d["analise"], d["mutacao"], d["analise"]["metricas"]
-    ok, total = d["validacao_resumo"]
+    v = d["suite"]
     cob = a["cobertura"]
     return f"""## Roteiro do pitch (cerca de 5 minutos)
 
@@ -1602,14 +1604,15 @@ Em sistema legado como o Logix, o teste costuma ser manual e sem medida de quant
 
 **2. A solução (30 s)**
 O TestingStudio Web lê o fonte 4GL, executa a função e aplica as três famílias de técnicas da disciplina:
-caixa-preta, caixa-branca e teste baseado em defeitos. Para cada uma, mostra o resultado e a medida de cobertura.
+caixa-preta, caixa-branca e teste baseado em defeitos. Depois valida a própria suíte antes de dar o veredito. Para cada uma, mostra o resultado e a medida de cobertura.
 
 **3. Demonstração (2 min)**
 1. Anexar o `{d['arquivo']}` e mostrar o fonte na tela.
 2. Sprint 1: classes de equivalência, valor limite com ε = {formato_br(d['epsilon'])} e a matriz de cobertura.
 3. Sprint 2: o grafo com N = {m['N']}, E = {m['E']}, P = {m['P']}, R = {m['R']} e V(G) = {m['V']} pelos três métodos.
 4. Sprint 3: pares Def-Uso e mutantes, com o escore de mutação.
-5. Trocar um valor na aba de testes extras ou editar o fonte e ver tudo recalcular.
+5. Sprint 4: as asserções que o driver executou e as {v['total']} conferências da própria suíte.
+6. Trocar um valor na aba de testes extras ou editar o fonte e ver tudo recalcular.
 
 **4. Evidências (1 min)**
 
@@ -1619,7 +1622,7 @@ caixa-preta, caixa-branca e teste baseado em defeitos. Para cada uma, mostra o r
 | Caixa-branca | Todos-Nós {porcento(cob['Todos-Nós'])}; Todas-Arestas {porcento(cob['Todas-Arestas'])}; caminhos {cob['Todos-Caminhos'][0]} de {cob['Todos-Caminhos'][1]} |
 | Fluxo de dados | Todos-Usos: {a['criterios']['Todos-Usos'][0]} de {a['criterios']['Todos-Usos'][1]} pares Def-Uso |
 | Mutação | Mt = {mut['Mt']}, Md = {mut['Md']}, Me = {mut['Me']}, MS = {texto_ms(mut)} |
-| Validação da ferramenta | {ok} de {total} verificações conferem com os gabaritos dos slides |
+| Validação da suíte | {v['ok']} de {v['total']} conferências atendidas; {v['asercoes']} asserções, {v['passaram']} passaram e {v['falharam']} falharam |
 
 **5. O achado (30 s)**
 {d['achado']}
@@ -1630,75 +1633,207 @@ Próximos passos: FOR e CASE, chamadas entre funções (teste de integração) e
 """
 
 
-GRANULARIDADES = ["Blocos indivisíveis (definição formal)", "Um nó por comando"]
-MODELO_DE_EXERCICIO = """FUNCTION minha_funcao(a, b)
-    DEFINE a, b, diferenca DECIMAL(12,2)
-    IF a > b THEN
-        LET diferenca = a - b
-    ELSE
-        LET diferenca = b - a
-    END IF
-    RETURN diferenca
-END FUNCTION
+# ---- Sprint 4: validacao da propria suite de testes do CAD0001 -------------
+SITUACOES = ["Caminho feliz", "Fronteira", "Exceção"]
+TEXTO_UNIDADE = (
+    "Nível de teste: unidade. A função de cálculo é testada isolada do resto do sistema. A ferramenta faz o "
+    "papel de driver: chama a função com os dados de cada teste e confere a resposta com uma asserção, cujo "
+    "valor esperado vem da especificação. Não são necessários stubs, porque a função não chama outros módulos.")
+
+
+def regra_do_caso(caso) -> int:
+    """Regra do combinado (1 a 4) que o caso verifica em primeiro lugar."""
+    valores = caso["entradas"]
+    if any(v is not None and v < 0 for v in valores):
+        return 3
+    if any(v is None for v in valores):
+        return 2
+    return 4
+
+
+def situacao_do_caso(caso, epsilon) -> str:
+    """As tres frentes do teste de unidade: caminho feliz, fronteira e excecao."""
+    valores = caso["entradas"]
+    if any(v is not None and v in (FRONTEIRA, FRONTEIRA - epsilon) for v in valores):
+        return "Fronteira"
+    if any(v is None or v < 0 for v in valores):
+        return "Exceção"
+    return "Caminho feliz"
+
+
+def texto_asercao(caso) -> str:
+    argumentos = ", ".join("None" if v is None else str(v) for v in caso["entradas"])
+    return f"assert {FUNCAO_ALVO}({argumentos}) == {caso['esperado']}"
+
+
+def tabela_asercoes(casos, epsilon) -> pd.DataFrame:
+    linhas = []
+    for c in casos:
+        if c["status"] == "Aprovado":
+            resultado = "✓ Passou"
+        elif c["status"] == "Reprovado":
+            resultado = f"✕ Falhou: obteve {'erro' if c['erro'] else c['obtido']}"
+        else:
+            resultado = "— sem resposta definida"
+        regra = regra_do_caso(c)
+        linhas.append({"Teste": c["id"], "Situação": situacao_do_caso(c, epsilon),
+                       "Regra verificada": f"{regra}. {REGRAS_SIMPLES[regra - 1][0]}",
+                       "Asserção": texto_asercao(c) if c["status"] != "Sem oráculo" else "—",
+                       "Resultado": resultado})
+    return pd.DataFrame(linhas)
+
+
+def validar_suite(casos, casos_base, nominal, programa, epsilon, qualidade, analise, mutacao) -> dict:
+    """Sprint 4: antes do veredito, confere se a propria suite e confiavel."""
+    q, cob = qualidade, analise["cobertura"]
+    nos, arestas, usos = cob["Todos-Nós"], cob["Todas-Arestas"], analise["criterios"]["Todos-Usos"]
+    regras = [n for n, _ in situacao_das_regras({"casos_lista": casos, "qualidade": q})]
+    por_situacao = {s: sum(situacao_do_caso(c, epsilon) == s for c in casos) for s in SITUACOES}
+    isolados = sum(sum(v != nominal for v in c["entradas"]) == 1 for c in casos_base)
+    repetidos = 0
+    for c in casos:                                   # segunda execucao de toda a suite
+        r = motor.executar_funcao(programa, c["entradas"], epsilon)
+        repetidos += r["valor"] == c["obtido"] and r["erro"] == c["erro"]
+    com_oraculo = q["total"] - q["sem_oraculo"]
+    ms = mutacao["MS"]
+    criterios = [
+        {"pergunta": "As respostas certas vêm da regra, e não do código?",
+         "tecnico": "Oráculo independente da implementação", "ok": q["sem_oraculo"] == 0,
+         "curto": f"{com_oraculo} de {q['total']}",
+         "evidencia": f"O esperado é calculado só pelas quatro regras do manual. {com_oraculo} de {q['total']} "
+                      "testes têm resposta esperada definida."},
+        {"pergunta": "Toda regra do combinado foi testada?",
+         "tecnico": "Rastreabilidade: regra → teste", "ok": all(regras),
+         "curto": f"{sum(1 for n in regras if n)} de {len(regras)} regras",
+         "evidencia": "Testes por regra: " + "; ".join(f"regra {i}: {n}" for i, n in enumerate(regras, 1)) + "."},
+        {"pergunta": "Entraram o uso normal, os limites e os erros?",
+         "tecnico": "Caminho feliz, fronteiras e exceções", "ok": all(por_situacao.values()),
+         "curto": f"{sum(1 for n in por_situacao.values() if n)} de {len(SITUACOES)} tipos",
+         "evidencia": "; ".join(f"{s}: {n} testes" for s, n in por_situacao.items()) + "."},
+        {"pergunta": "Todo grupo de valores e toda fronteira tiveram teste?",
+         "tecnico": "Critérios da PCE e da AVL",
+         "ok": q["classes"][0] == q["classes"][1] and q["pontos"][0] == q["pontos"][1],
+         "curto": f"{q['classes'][0] + q['pontos'][0]} de {q['classes'][1] + q['pontos'][1]}",
+         "evidencia": f"Classes de equivalência: {q['classes'][0]} de {q['classes'][1]}. Pontos de fronteira: "
+                      f"{q['pontos'][0]} de {q['pontos'][1]}."},
+        {"pergunta": "Cada teste muda um valor só?",
+         "tecnico": "Isolamento da causa", "ok": isolados == len(casos_base),
+         "curto": f"{isolados} de {len(casos_base)}",
+         "evidencia": "Na suíte planejada, cada teste altera um único parâmetro e mantém os outros no valor "
+                      "comum. Se falhar, já se sabe qual valor causou a falha."},
+        {"pergunta": "Os testes passaram por todo o código?",
+         "tecnico": "Todos-Nós e Todas-Arestas", "ok": nos[0] == nos[1] and arestas[0] == arestas[1],
+         "curto": porcento(nos) if porcento(nos) == porcento(arestas) else f"{porcento(nos)} e {porcento(arestas)}",
+         "evidencia": f"Nós: {nos[0]} de {nos[1]}. Arestas: {arestas[0]} de {arestas[1]}."},
+        {"pergunta": "Os testes acompanharam todos os dados?",
+         "tecnico": "Todos-Usos (pares Def-Uso)", "ok": usos[0] == usos[1],
+         "curto": f"{usos[0]} de {usos[1]}", "evidencia": f"{usos[0]} de {usos[1]} pares Def-Uso exercitados."},
+        {"pergunta": "Os testes percebem defeitos plantados?",
+         "tecnico": "Escore de mutação (MS)", "ok": ms is not None and ms >= 100,
+         "curto": texto_ms(mutacao),
+         "evidencia": f"{mutacao['Md']} de {mutacao['Mt'] - mutacao['Me']} mutantes mortos."},
+        {"pergunta": "Repetindo os testes, o resultado é o mesmo?",
+         "tecnico": "Repetibilidade", "ok": repetidos == len(casos),
+         "curto": f"{repetidos} de {len(casos)}",
+         "evidencia": f"A suíte foi executada duas vezes; {repetidos} de {len(casos)} testes deram exatamente "
+                      "o mesmo resultado."},
+    ]
+    return {"criterios": criterios, "ok": sum(c["ok"] for c in criterios), "total": len(criterios),
+            "asercoes": com_oraculo, "passaram": q["aprovados"], "falharam": q["reprovados"]}
+
+
+def tabela_criterios_suite(suite) -> pd.DataFrame:
+    return pd.DataFrame([{"Pergunta": c["pergunta"], "Critério técnico": c["tecnico"], "Medida": c["curto"],
+                          "Situação": "✓ Atendido" if c["ok"] else "! Pendente", "Evidência": c["evidencia"]}
+                         for c in suite["criterios"]])
+
+
+def script_de_testes(casos, arquivo: str) -> str:
+    """Os mesmos testes como arquivo Python: roda com pytest ou com python puro."""
+    linhas = []
+    for c in casos:
+        if c["status"] == "Sem oráculo":
+            continue
+        entradas = ", ".join("None" if v is None else f'D("{v}")' for v in c["entradas"])
+        regra = regra_do_caso(c)
+        linhas.append(f'    ("{c["id"]}", "Regra {regra}: {REGRAS_SIMPLES[regra - 1][0]}", ({entradas}), '
+                      f'D("{c["esperado"]}")),')
+    casos_txt = "\n".join(linhas)
+    return f'''"""
+Testes de unidade de {FUNCAO_ALVO} (CAD0001), gerados pelo TestingStudio.
+
+O resultado esperado de cada teste vem da especificacao (oraculo), nunca do codigo.
+Este arquivo e o driver: le o fonte 4GL, chama a funcao e confere cada assercao.
+
+Como rodar: deixe este arquivo na pasta do TestingStudio, junto do motor.py e do
+{arquivo}, e use um dos comandos:
+    python test_cad0001.py
+    python -m pytest -v test_cad0001.py
 """
+from decimal import Decimal as D
+from pathlib import Path
+
+import motor
+
+ARQUIVO = Path(__file__).with_name({arquivo!r})
+FUNCAO = {FUNCAO_ALVO!r}
+
+# (teste, regra verificada, entradas, esperado pela especificacao)
+CASOS = [
+{casos_txt}
+]
 
 
-@st.cache_data(show_spinner=False, max_entries=64)
-def analise_do_laboratorio(codigo, casos, por_bloco):
-    return motor.analisar_fonte(codigo, list(casos), por_bloco)
+def _ler_fonte():
+    dados = ARQUIVO.read_bytes()
+    for codificacao in ("utf-8-sig", "cp1252", "latin-1"):
+        try:
+            return dados.decode(codificacao)
+        except UnicodeDecodeError:
+            pass
 
 
-def laboratorio() -> None:
-    """Sprint 4: o mesmo motor aplicado a exemplos das aulas ou a um codigo colado."""
-    opcoes = {f"{e['titulo']} ({e['aula']})": e for e in motor.EXEMPLOS}
-    escolha = st.selectbox("Exercício", list(opcoes) + ["Colar o meu código"], key="lab_escolha")
-    exemplo = opcoes.get(escolha)
-    chave = exemplo["chave"] if exemplo else "proprio"
-    codigo = st.text_area("Código em 4GL (DEFINE, IF, WHILE, LET, RETURN)",
-                          value=exemplo["fonte"] if exemplo else MODELO_DE_EXERCICIO,
-                          height=250, key=f"lab_codigo_{chave}")
-    funcao = motor.localizar_funcao(codigo)
-    if funcao is None:
-        st.error("Não encontrei 'FUNCTION nome(...) ... END FUNCTION' no texto.")
-        return
-    nomes = funcao["parametros"]
-    por_bloco = st.radio("Como contar os nós", GRANULARIDADES, horizontal=True, key=f"lab_nos_{chave}",
-                         index=0 if exemplo is None or exemplo["por_bloco"] else 1) == GRANULARIDADES[0]
-
-    base = exemplo["casos"] if exemplo else [("T1", (5, 3)), ("T2", (3, 5))]
-    linhas = [{"_caso": rotulo, **{n: (None if v is None else float(v)) for n, v in zip(nomes, entrada)}}
-              for rotulo, entrada in base if len(entrada) == len(nomes)]
-    inicial = pd.DataFrame(linhas or [{"_caso": "T1", **{n: None for n in nomes}}])
-    st.markdown("**Casos de teste** (edite, apague ou acrescente linhas; célula vazia envia NULL)")
-    editado = st.data_editor(
-        inicial, num_rows="dynamic", hide_index=True, width="stretch",
-        key=f"lab_casos_{chave}_{'_'.join(nomes)}",
-        column_config={"_caso": st.column_config.TextColumn("Caso"),
-                       **{n: st.column_config.NumberColumn(n, format="%.2f") for n in nomes}})
-    casos = []
-    for _, linha in editado.iterrows():
-        rotulo = linha["_caso"] if isinstance(linha["_caso"], str) and linha["_caso"].strip() else f"T{len(casos) + 1}"
-        casos.append((rotulo, tuple(None if pd.isna(linha[n]) else float(linha[n]) for n in nomes)))
-    if not casos:
-        st.info("Inclua pelo menos um caso de teste.", icon=":material/add:")
-        return
-    try:
-        a = analise_do_laboratorio(codigo, tuple(casos), por_bloco)
-    except motor.Erro4GL as problema:
-        st.error(f"Não consegui interpretar a função: {problema}. "
-                 "O interpretador entende DEFINE, IF/THEN/ELSE, WHILE, LET e RETURN.")
-        return
-    if exemplo and exemplo.get("observacao"):
-        st.caption(exemplo["observacao"])
-    aba_cb, aba_fd, aba_mu = st.tabs(["Caixa-branca", "Fluxo de dados", "Mutação"])
-    with aba_cb:
-        painel_caixa_branca(a, f"lab_{chave}")
-    with aba_fd:
-        painel_fluxo(a, f"lab_{chave}")
-    with aba_mu:
-        painel_mutacao(a, f"lab_{chave}")
+def _unidade():
+    funcao = motor.localizar_funcao(_ler_fonte(), FUNCAO)
+    assert funcao is not None, f"FUNCTION {{FUNCAO}} nao encontrada em {{ARQUIVO.name}}"
+    programa = motor.compilar_funcao(funcao["parametros"], funcao["corpo"], funcao["linha"], FUNCAO)
+    return programa, motor.tipo_decimal(funcao["corpo"])[2]
 
 
+UNIDADE = _unidade()
+
+try:
+    import pytest
+    _parametrizar = pytest.mark.parametrize("teste, regra, entradas, esperado", CASOS,
+                                            ids=[c[0] for c in CASOS])
+except ImportError:
+    def _parametrizar(funcao):
+        return funcao
+
+
+@_parametrizar
+def test_cad0001(teste, regra, entradas, esperado):
+    programa, epsilon = UNIDADE
+    r = motor.executar_funcao(programa, list(entradas), epsilon)
+    assert r["erro"] is None, f"{{teste}} | {{regra}} | a funcao parou com erro: {{r['erro']}}"
+    assert r["valor"] == esperado, f"{{teste}} | {{regra}} | esperado {{esperado}}, obtido {{r['valor']}}"
+
+
+if __name__ == "__main__":
+    falhas = 0
+    for caso in CASOS:
+        try:
+            test_cad0001(*caso)
+            print(f"OK      {{caso[0]}}")
+        except AssertionError as erro:
+            falhas += 1
+            print(f"FALHOU  {{erro}}")
+    print(f"\\n{{len(CASOS) - falhas}} de {{len(CASOS)}} testes passaram.")
+    raise SystemExit(1 if falhas else 0)
+'''
+
+
+GRANULARIDADES = ["Blocos indivisíveis (definição formal)", "Um nó por comando"]
 # ==========================================================================
 # INTERFACE WEB (Streamlit)
 # ==========================================================================
@@ -1938,7 +2073,7 @@ with aba_s2:
         "trechos e desvios cada um passou.", "caixa_branca"))
     por_bloco = st.radio("Como contar os nós", GRANULARIDADES, horizontal=True, key="cad_granularidade",
                          help="A definição formal junta em um nó os comandos em sequência, sem desvio. "
-                              "Alguns slides desenham um nó para cada comando.") == GRANULARIDADES[0]
+                              "Também é comum desenhar um nó para cada comando.") == GRANULARIDADES[0]
 
 casos_do_motor = tuple((c["id"], tuple(c["entradas"])) for c in casos)
 try:
@@ -1970,8 +2105,7 @@ with aba_s3:
         mutacao = painel_mutacao(analise, "cad")
 
 # ======================= DADOS CONSOLIDADOS =================================
-linhas_validacao = validacao_em_cache()
-validacao_resumo = (sum(1 for l in linhas_validacao if l["confere"]), len(linhas_validacao))
+suite = validar_suite(casos, casos_base, nominal, programa, epsilon, qualidade, analise, mutacao)
 achado = achado_central(qualidade, analise, mutacao)
 pacote = {
     "qualidade": qualidade, "casos": df_casos, "casos_lista": casos, "pce": df_pce, "pontos": df_pontos_tela,
@@ -1979,8 +2113,8 @@ pacote = {
     "analise": analise, "mutacao": mutacao, "achado": achado, "parametros": parametros,
     "nos": tabela_nos(analise), "execucoes": tabela_execucoes(analise), "caminhos": tabela_caminhos(analise),
     "variaveis": tabela_variaveis(analise), "pares": tabela_pares(analise), "mutantes": tabela_mutantes(analise),
-    "validacao": tabela_validacao(linhas_validacao), "validacao_resumo": validacao_resumo,
-    "validacao_linhas": linhas_validacao, "epsilon": epsilon, **identificacao,
+    "suite": suite, "criterios_suite": tabela_criterios_suite(suite), "asercoes": tabela_asercoes(casos, epsilon),
+    "epsilon": epsilon, **identificacao,
 }
 assinatura = hashlib.sha256((texto_funcao + df_casos.to_csv() + str(por_bloco) + str(mutacao)).encode()).hexdigest()
 parecer = st.session_state.get("parecer")
@@ -2005,26 +2139,35 @@ def botoes_de_download(chave: str) -> None:
 with aba_s4:
     st.html(html_explica(
         "Em palavras simples",
-        "Antes de confiar na ferramenta, ela mesma é testada. Cada exercício resolvido em aula, com resposta "
-        "conhecida, passa pelo mesmo motor, e o resultado é comparado com o gabarito do slide.", "validacao"))
-    aba_validacao, aba_laboratorio = st.tabs(["Validação com gabaritos das aulas", "Laboratório de exercícios"])
-    with aba_validacao:
-        v1, v2 = st.columns([1, 3])
-        v1.metric("Verificações que conferem", f"{validacao_resumo[0]} de {validacao_resumo[1]}", border=True)
-        if validacao_resumo[0] == validacao_resumo[1]:
-            v2.success("O motor reproduz todos os gabaritos: contagens do grafo, V(G), caminhos, pares "
-                       "Def-Uso, estados dos mutantes e escore de mutação.", icon=":material/verified:")
-        else:
-            v2.error("Há divergência em relação a algum gabarito. Veja as linhas marcadas na tabela.",
-                     icon=":material/error:")
-        st.dataframe(pacote["validacao"], hide_index=True, width="stretch", height="content")
-        for exemplo in motor.EXEMPLOS:
-            if exemplo.get("observacao"):
-                st.caption(f"{exemplo['titulo']}: {exemplo['observacao']}")
-    with aba_laboratorio:
-        st.write("Use o mesmo motor para conferir exercícios e gabaritos: escolha um exemplo das aulas "
-                 "ou cole a sua função, monte os casos e veja grafo, pares Def-Uso e mutantes.")
-        laboratorio()
+        "Antes de dizer que o programa tem defeito, é preciso saber se os testes são bons. A Sprint 4 valida a "
+        "própria suíte do CAD0001: de onde vem a resposta certa, se toda regra foi testada, se entraram o uso "
+        "normal, os limites e os erros, e se o resultado se repete.", "validacao"))
+    k = st.columns(4)
+    k[0].metric("Conferências atendidas", f"{suite['ok']} de {suite['total']}", border=True)
+    k[1].metric("Asserções executadas", suite["asercoes"], border=True,
+                help="Testes com resposta esperada definida pela especificação.")
+    k[2].metric("Passaram", suite["passaram"], border=True)
+    k[3].metric("Falharam", suite["falharam"], border=True, help="Asserções que acusaram defeito no programa.")
+    if suite["ok"] == suite["total"]:
+        st.success("A suíte passou em todas as conferências." + (
+            " Por isso as asserções que falharam apontam defeito do programa, e não do teste."
+            if suite["falharam"] else ""), icon=":material/verified:")
+    else:
+        st.warning("Há conferência pendente. As linhas marcadas com ! mostram onde a suíte pode melhorar.",
+                   icon=":material/rule:")
+    aba_conferencias, aba_asercoes = st.tabs(["Conferências da suíte", "Asserções (teste de unidade)"])
+    with aba_conferencias:
+        st.table(pacote["criterios_suite"].style.hide(axis="index"))
+    with aba_asercoes:
+        st.write(TEXTO_UNIDADE)
+        st.dataframe(pacote["asercoes"], hide_index=True, width="stretch", height="content",
+                     column_config={"Asserção": st.column_config.TextColumn(width="large"),
+                                    "Resultado": st.column_config.TextColumn(width="medium")})
+        st.download_button("Baixar estes testes em Python", script_de_testes(casos, pacote["arquivo"]),
+                           key="baixar_testes", file_name="test_cad0001.py", mime="text/x-python",
+                           icon=":material/code:")
+        st.caption(f"Para rodar fora da página: deixe o arquivo na pasta do TestingStudio, junto do motor.py e do "
+                   f"{pacote['arquivo']}, e use python test_cad0001.py (ou python -m pytest -v test_cad0001.py).")
 
 # ======================= APRESENTAR =========================================
 with aba_apresentar:
@@ -2116,7 +2259,8 @@ with aba_laudo:
     st.html(html_secao("O defeito, em um exemplo" if caso_exemplar(pacote) else "Um exemplo de teste",
                        "Um dos testes, do começo ao fim."))
     st.html(html_exemplo(pacote))
-    st.html(html_secao("Por que confiar neste laudo"))
+    st.html(html_secao("Por que confiar nestes testes",
+                       "A própria suíte foi conferida antes do veredito. Os detalhes estão na aba Sprint 4."))
     st.html(html_confianca(pacote))
     st.html(html_secao("O que este laudo não cobre"))
     st.html(html_limites())
