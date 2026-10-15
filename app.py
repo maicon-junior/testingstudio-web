@@ -23,7 +23,7 @@ import hashlib
 import html
 import json
 import os
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 
@@ -168,6 +168,31 @@ GLOSSARIO = [
 # ==========================================================================
 # PASSO 1 - Leitura do arquivo .txt
 # ==========================================================================
+BRASILIA = timezone(timedelta(hours=-3), "horário de Brasília")   # sem horário de verão desde 2019
+
+
+def _fuso():
+    """Fuso de quem esta vendo a pagina (informado pelo navegador). O servidor publicado
+    roda em UTC, por isso nao se usa o relogio dele. Se nao der, usa o horario de Brasilia."""
+    try:
+        from zoneinfo import ZoneInfo
+        nome = st.context.timezone
+        if nome:
+            return ZoneInfo(nome)
+    except Exception:
+        pass
+    return BRASILIA
+
+
+def agora() -> datetime:
+    return datetime.now(_fuso())
+
+
+def fuso_horario() -> str:
+    fuso = _fuso()
+    return "horário de Brasília" if fuso is BRASILIA else str(getattr(fuso, "key", fuso)).replace("_", " ")
+
+
 def decodificar(dados: bytes) -> str:
     """Converte bytes em texto. Fontes Logix/4GL costumam vir em cp1252
     (acentos do Windows), por isso tentamos UTF-8 primeiro e depois cp1252."""
@@ -191,7 +216,7 @@ def registrar_fonte(nome: str, dados: bytes, origem: str, ident) -> None:
         "fonte_editado": texto,          # conteudo da caixa de texto
         "fonte_bytes": len(dados),
         "fonte_sha": hashlib.sha256(dados).hexdigest(),
-        "fonte_quando": datetime.now().strftime("%d/%m/%Y %H:%M:%S"),
+        "fonte_quando": agora().strftime("%d/%m/%Y %H:%M:%S"),
     })
     st.session_state.pop("parecer", None)
 
@@ -1213,7 +1238,7 @@ pre.parecer {{ white-space:pre-wrap; font-family:inherit; background: var(--ts-r
 {parecer}
 <h2 class="anexo">Fontes</h2>
 {html_fontes()}
-<p class="rodape">Laudo gerado em {datetime.now().strftime("%d/%m/%Y %H:%M")} pelo TestingStudio. Método: a ferramenta interpreta
+<p class="rodape">Laudo gerado em {agora().strftime("%d/%m/%Y %H:%M")} ({fuso_horario()}) pelo TestingStudio. Método: a ferramenta interpreta
 em Python a lógica da função 4GL carregada (IF, WHILE, LET, RETURN, comparações e aritmética); não é o compilador Informix.</p>
 </div>
 <script src="https://cdn.jsdelivr.net/npm/@viz-js/viz@3.31.0/dist/viz-global.js"></script>
