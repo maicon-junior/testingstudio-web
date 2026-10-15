@@ -426,7 +426,7 @@ def info_do_tipo(tipo, *numeros):
         maximo = Decimal(10) ** (precisao - escala) - epsilon
         rotulo = f"{tipo.upper()}({precisao},{escala})" if len(numeros) > 1 else tipo.upper() + (
             f"({precisao})" if numeros else "")
-        return {"rotulo": rotulo, "numerico": True, "escala": escala, "epsilon": epsilon,
+        return {"rotulo": rotulo, "numerico": True, "escala": escala, "epsilon": epsilon, "precisao": precisao,
                 "minimo": -maximo, "maximo": maximo, "nota": nota}
     if tipo in ("integer", "int", "serial"):
         limite = Decimal(2147483647)

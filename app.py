@@ -445,6 +445,18 @@ ESTILO_CSS = """
 .ts-cartao pre { margin: .4rem 0 .5rem; padding: .7rem .85rem; border-radius: 10px; background: var(--ts-relevo);
   color: var(--ts-tinta); font-family: 'IBM Plex Mono', Consolas, monospace; font-size: .85rem; white-space: pre; overflow-x: auto; }
 
+/* ---- calculo do Epsilon ---- */
+.ts-contas { display:grid; gap: .9rem; margin: .4rem 0 1rem; }
+.ts-conta .ts-tecnico { margin: 0 0 .6rem; }
+.ts-passos { list-style:none; margin:0 !important; padding:0 !important; display:grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: .8rem; }
+.ts-passos li { margin:0 !important; display:flex; gap:.7rem; align-items:flex-start; background: var(--ts-relevo); border-radius: 12px; padding: .8rem .9rem; }
+.ts-passos li div { display:flex; flex-direction:column; gap:.2rem; min-width:0; }
+.ts-passos small { color: var(--ts-suave); font-size:.82rem; }
+.ts-passos b { font-size: 1.12rem; color: var(--ts-tinta); line-height:1.35; overflow-wrap:anywhere; }
+.ts-passos b b { font-size: inherit; color: var(--ts-destaque, var(--ts-tinta)); }
+.ts-passos em { font-style: normal; color: var(--ts-suave); font-size: .84rem; line-height:1.4; }
+@media (max-width: 760px) { .ts-passos { grid-template-columns: 1fr; } }
+
 /* ---- confianca e limites ---- */
 .ts-confianca { display:grid; grid-template-columns: 210px minmax(0,1fr); gap: 1.4rem; align-items: start; }
 .ts-placar { background: var(--ts-ok-suave); border-radius: 14px; padding: 1.1rem 1.2rem; text-align:center; }
@@ -881,6 +893,76 @@ def html_glossario() -> str:
         f"<div><dt>{esc(t)}</dt><dd>{esc(x)}</dd></div>" for t, x in GLOSSARIO) + "</dl>"
 
 
+def _potencia(expoente) -> str:
+    return f"10<sup>{'−' if expoente > 0 else ''}{expoente}</sup>" if expoente else "10<sup>0</sup>"
+
+
+def _o_que_e_o_passo(tipo) -> str:
+    if tipo["escala"] == 0:
+        return "uma unidade inteira (o tipo não tem casas decimais)"
+    if tipo["escala"] == 2:
+        return "um centavo"
+    return f"a {tipo['escala']}ª casa depois da vírgula"
+
+
+def _offpoints(p):
+    """Contas dos Off-Points de um parametro: [(texto_html, texto_simples)]."""
+    eps, contas = p["tipo"]["epsilon"], []
+    if p["minimo"] is not None:
+        contas.append((f"{esc(formato_br(p['minimo']))} − {esc(formato_br(eps))} = <b>{esc(formato_br(p['minimo'] - eps))}</b>",
+                       f"{formato_br(p['minimo'])} − {formato_br(eps)} = {formato_br(p['minimo'] - eps)}"))
+    if p["maximo"] is not None:
+        contas.append((f"{esc(formato_br(p['maximo']))} + {esc(formato_br(eps))} = <b>{esc(formato_br(p['maximo'] + eps))}</b>",
+                       f"{formato_br(p['maximo'])} + {formato_br(eps)} = {formato_br(p['maximo'] + eps)}"))
+    return contas
+
+
+def tabela_epsilon(spec) -> pd.DataFrame:
+    """O calculo do Epsilon de cada parametro, com as contas escritas."""
+    linhas = []
+    for p in spec["params"]:
+        t = p["tipo"]
+        s_ = t["escala"]
+        maior = (f"10^({t['precisao']} − {s_}) − ε = {formato_br(t['maximo'])}" if t.get("precisao") is not None
+                 else f"{formato_br(t['maximo'])} (limite do tipo)")
+        offs = [simples for _, simples in _offpoints(p)]
+        linhas.append({"Parâmetro": p["nome"], "Tipo": t["rotulo"], "Casas decimais (s)": s_,
+                       "ε = 10^−s": f"10^−{s_} = {formato_br(t['epsilon'])}" if s_ else "10^0 = 1",
+                       "Maior valor do tipo": maior,
+                       "Off-Point = fronteira ∓ ε": "; ".join(offs) if offs else "sem fronteira na especificação",
+                       "Observação": t["nota"]})
+    return pd.DataFrame(linhas)
+
+
+def html_epsilon(spec) -> str:
+    """O calculo do Epsilon em tres passos, um quadro por grupo de parametros iguais."""
+    grupos = {}
+    for p in spec["params"]:
+        chave = (p["tipo"]["rotulo"], p["minimo"], p["maximo"])
+        grupos.setdefault(chave, []).append(p)
+    quadros = []
+    for grupo in grupos.values():
+        p, t = grupo[0], grupo[0]["tipo"]
+        offs = _offpoints(p)
+        terceiro = ("<br>".join(f"Off-Point = {html_}" for html_, _ in offs) if offs else
+                    "Sem faixa válida na especificação, não há fronteira")
+        passos = [
+            ("Tipo declarado no código", esc(t["rotulo"]),
+             ("nenhuma casa depois da vírgula" if t["escala"] == 0 else
+              f"{t['escala']} casa{'s' if t['escala'] != 1 else ''} depois da vírgula")
+             + (f" ({t['nota']})" if t["nota"] else "")),
+            ("Menor passo que o tipo representa", f"ε = {_potencia(t['escala'])} = {esc(formato_br(t['epsilon']))}",
+             esc(_o_que_e_o_passo(t))),
+            ("Primeiro valor fora da fronteira", terceiro,
+             "o valor inválido mais próximo do limite: só ele distingue um &lt; de um &lt;= no código"),
+        ]
+        itens = "".join(f'<li><span class="ts-n">{i}</span><div><small>{titulo}</small><b>{valor}</b>'
+                        f'<em>{nota}</em></div></li>' for i, (titulo, valor, nota) in enumerate(passos, 1))
+        quadros.append(f'<article class="ts-cartao ts-conta"><p class="ts-tecnico">'
+                       f'{esc(", ".join(x["nome"] for x in grupo))}</p><ol class="ts-passos">{itens}</ol></article>')
+    return '<div class="ts-contas">' + "".join(quadros) + "</div>"
+
+
 def html_matriz(casos, spec) -> str:
     """Matriz parametro x ponto: mostra de uma vez o que foi coberto e o resultado."""
     colunas = []
@@ -1084,7 +1166,9 @@ pre.parecer {{ white-space:pre-wrap; font-family:inherit; background: var(--ts-r
 <div class="kpi"><b>{q['pontos'][0]}/{q['pontos'][1]}</b><span>pontos de fronteira cobertos</span></div></div>
 <h3>Especificação usada como oráculo</h3>{f"<p>{esc(SPEC['enunciado'])}</p>" if SPEC['enunciado'].strip() else ""}
 <ol>{''.join(f'<li>{esc(r["formal"])}</li>' for r in REGRAS)}</ol>
-<h3>Épsilon e réguas da fronteira</h3><p>{esc(d['justificativa'])}</p>{base("epsilon")}
+<h3>Cálculo do Épsilon (ε)</h3><p>{esc(d['justificativa'])}</p>{base("epsilon")}
+{html_epsilon(SPEC)}{tabela(tabela_epsilon(SPEC))}
+<h3>Réguas da fronteira</h3>
 {''.join(f"<p class='nota'>{esc(t)}</p>{svg}" for t, svg in d['reguas']) or "<p>A especificação não define faixa válida; não há fronteira.</p>"}
 <h3>Pontos de fronteira</h3>{tabela(d['pontos'])}
 <h3>Classes de equivalência</h3>{tabela(d['pce'])}
@@ -2141,8 +2225,7 @@ justificativa = (
     "limite, o único capaz de distinguir um '<' de um '<=' no código.")
 
 with aba_programa:
-    st.write(justificativa)
-    st.html(html_base("epsilon"))
+    st.caption("O cálculo do Épsilon, passo a passo, está na aba Sprint 1: caixa-preta → Cálculo do Épsilon (ε).")
 
 # ======================= SPRINT 1: CAIXA-PRETA ==============================
 with aba_s1:
@@ -2151,8 +2234,8 @@ with aba_s1:
         "A caixa-preta testa o programa pelo que ele promete, sem olhar o código. Os valores possíveis são "
         "divididos em grupos que o programa deve tratar igual (classes de equivalência) e o teste se concentra "
         "nas fronteiras entre os grupos (valor limite), onde os erros mais aparecem.", "caixa_preta"))
-    aba_resumo, aba_rel, aba_graf, aba_extra = st.tabs(
-        ["Resumo", "Classes e casos de teste", "Régua da fronteira", "Testes extras"])
+    aba_resumo, aba_eps, aba_rel, aba_graf, aba_extra = st.tabs(
+        ["Resumo", "Cálculo do Épsilon (ε)", "Classes e casos de teste", "Régua da fronteira", "Testes extras"])
 
 # A aba de testes extras e montada primeiro porque todos os indicadores usam as linhas digitadas nela.
 with aba_extra:
@@ -2209,6 +2292,9 @@ with aba_resumo:
                 help="Pontos de fronteira cobertos: On, Off, Interior e Exterior de cada limite de cada parâmetro.")
     k[5].metric("Defeitos", len(qualidade["achados"]), border=True,
                 help="Tipos de defeito revelados: divergências diferentes entre o esperado e o obtido.")
+    st.caption("Épsilon (ε) usado nas fronteiras: " + "; ".join(
+        f"{', '.join(p['nome'] for p in spec['params'] if p['tipo']['epsilon'] == e)}: ε = {formato_br(e)}"
+        for e in epsilons) + ". A conta está na aba Cálculo do Épsilon (ε).")
     if qualidade["reprovados"] == 0 and qualidade["aprovados"]:
         st.success(f"Nenhuma divergência: os {qualidade['aprovados']} casos com resultado esperado "
                    "definido foram aprovados.", icon=":material/check_circle:")
@@ -2223,6 +2309,19 @@ with aba_resumo:
     st.caption("Cada célula é um caso: um parâmetro recebe o valor da coluna e os outros ficam no valor comum "
                f"({', '.join(formato_br(p['comum']) for p in spec['params'])}). Os testes extras entram nos "
                "indicadores acima.")
+
+with aba_eps:
+    st.html(html_explica(
+        "Por que o Épsilon importa",
+        "O erro mais comum em regra de limite é trocar um &lt; por um &lt;=. Para pegar esse erro, o teste precisa "
+        "usar o valor inválido mais próximo possível da fronteira. Esse valor fica a exatamente um Épsilon (ε) "
+        "dela, e o ε é calculado a partir do tipo de dado declarado no código.", "epsilon"))
+    st.html(html_epsilon(spec))
+    st.markdown("**A conta de cada parâmetro**")
+    st.dataframe(tabela_epsilon(spec), hide_index=True, width="stretch")
+    st.caption("Fórmula: ε = 10 elevado a menos o número de casas decimais do tipo. DECIMAL(p,s) tem s casas; "
+               "INTEGER e SMALLINT não têm casas, então ε = 1. O Off-Point fica um ε abaixo do mínimo válido "
+               "ou um ε acima do máximo válido.")
 
 with aba_rel:
     st.subheader("Especificação usada como oráculo")
