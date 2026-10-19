@@ -1817,48 +1817,6 @@ def achado_central(q, a, mut) -> str:
             f"(nós: {porcento(nos)}, arestas: {porcento(arestas)}): falta exercitar parte do código.")
 
 
-def roteiro_do_pitch(d) -> str:
-    """Roteiro de apresentacao em Markdown, com os numeros desta auditoria."""
-    q, a, mut, m = d["qualidade"], d["analise"], d["mutacao"], d["analise"]["metricas"]
-    v = d["suite"]
-    cob = a["cobertura"]
-    return f"""## Roteiro do pitch (cerca de 5 minutos)
-
-**1. O problema (30 s)**
-Testar tudo é impossível, e testar "mais ou menos" deixa o defeito passar na fronteira.
-Em sistema legado como o Logix, o teste costuma ser manual e sem medida de quanto foi coberto.
-
-**2. A solução (30 s)**
-O TestingStudio Web lê o fonte 4GL, executa a função e aplica as três famílias de técnicas da disciplina:
-caixa-preta, caixa-branca e teste baseado em defeitos. Depois valida a própria suíte antes de dar o veredito. Para cada uma, mostra o resultado e a medida de cobertura.
-
-**3. Demonstração (2 min)**
-1. Anexar o `{d['arquivo']}` e mostrar o fonte na tela.
-2. Sprint 1: classes de equivalência, valor limite com ε = {formato_br(d['epsilon'])} e a matriz de cobertura.
-3. Sprint 2: o grafo com N = {m['N']}, E = {m['E']}, P = {m['P']}, R = {m['R']} e V(G) = {m['V']} pelos três métodos.
-4. Sprint 3: pares Def-Uso e mutantes, com o escore de mutação.
-5. Sprint 4: os requisitos derivados da especificação, os casos por fluxo, a matriz de rastreabilidade nos dois sentidos e as {v['total']} conferências da suíte.
-6. Trocar um valor na aba de testes extras ou editar o fonte e ver tudo recalcular.
-
-**4. Evidências (1 min)**
-
-| Técnica | Resultado desta auditoria |
-|---|---|
-| Caixa-preta | {q['total']} casos, {q['aprovados']} aprovados, {q['reprovados']} reprovados; classes {q['classes'][0]}/{q['classes'][1]}; fronteiras {q['pontos'][0]}/{q['pontos'][1]} |
-| Caixa-branca | Todos-Nós {porcento(cob['Todos-Nós'])}; Todas-Arestas {porcento(cob['Todas-Arestas'])}; caminhos {cob['Todos-Caminhos'][0]} de {cob['Todos-Caminhos'][1]} |
-| Fluxo de dados | Todos-Usos: {a['criterios']['Todos-Usos'][0]} de {a['criterios']['Todos-Usos'][1]} pares Def-Uso |
-| Mutação | Mt = {mut['Mt']}, Md = {mut['Md']}, Me = {mut['Me']}, MS = {texto_ms(mut)} |
-| Validação | requisitos cobertos {d['rtm']['ida'][0]}/{d['rtm']['ida'][1]}; testes rastreados {d['rtm']['volta'][0]}/{d['rtm']['volta'][1]}; {v['ok']} de {v['total']} conferências atendidas; {v['asercoes']} asserções, {v['falharam']} falharam |
-
-**5. O achado (30 s)**
-{d['achado']}
-
-**6. Limites e próximos passos (30 s)**
-O interpretador entende DEFINE, IF, CASE, WHILE, FOR, LET e RETURN; não é o compilador Informix e não acessa banco.
-Próximos passos: chamadas entre funções (teste de integração), parâmetros de texto e geração automática dos casos que faltam.
-"""
-
-
 # ---- Sprint 4: requisitos, casos de teste por fluxo e rastreabilidade ---------
 FLUXOS = ["Fluxo principal", "Fluxo alternativo", "Fluxo de exceção"]
 EXPLICA_FLUXO = {
@@ -2245,9 +2203,9 @@ identificacao = {"arquivo": st.session_state["fonte_nome"], "linhas": len(origin
                  "quando": st.session_state["fonte_quando"], "sha": st.session_state["fonte_sha"]}
 lugar_da_faixa = st.empty()       # preenchida depois que a funcao e escolhida
 
-aba_laudo, aba_programa, aba_s1, aba_s2, aba_s3, aba_s4, aba_parecer, aba_apresentar, aba_fontes = st.tabs(
+aba_laudo, aba_programa, aba_s1, aba_s2, aba_s3, aba_s4, aba_parecer, aba_fontes = st.tabs(
     ["Laudo", "Programa e especificação", "Sprint 1: caixa-preta", "Sprint 2: caixa-branca",
-     "Sprint 3: dados e mutação", "Sprint 4: validação", "Parecer geral", "Apresentar", "Fontes"])
+     "Sprint 3: dados e mutação", "Sprint 4: validação", "Parecer geral", "Fontes"])
 
 # ======================= PROGRAMA E ESPECIFICACAO ============================
 with aba_programa:
@@ -2655,7 +2613,6 @@ assinatura = hashlib.sha256((texto_funcao + df_casos.to_csv() + str(por_bloco) +
 pacote["pareceres"] = {k: st.session_state[f"parecer::{k}"] for k in list(ETAPAS) + ["geral"]
                        if f"parecer::{k}" in st.session_state}
 relatorio_html = gerar_relatorio_html(pacote)
-roteiro = roteiro_do_pitch(pacote)
 
 
 def botoes_de_download(chave: str) -> None:
@@ -2812,17 +2769,6 @@ with aba_parecer:
             else:
                 st.caption(f"Gere este parecer no fim da aba {etapa['titulo']}.")
     st.caption("Todos os pareceres gerados entram no laudo completo (HTML).")
-
-# ======================= APRESENTAR =========================================
-with aba_apresentar:
-    st.html(html_explica(
-        "Para apresentar",
-        "Comece pela aba Laudo: ela foi escrita para quem não é da área. O roteiro abaixo "
-        "organiza a fala em cerca de cinco minutos, com os números desta análise."))
-    botoes_de_download("apresentar")
-    st.markdown(roteiro)
-    st.download_button("Baixar o roteiro (Markdown)", roteiro, key="baixar_roteiro",
-                       file_name="roteiro_apresentacao.md", mime="text/markdown", icon=":material/notes:")
 
 # ======================= FONTES =============================================
 with aba_fontes:

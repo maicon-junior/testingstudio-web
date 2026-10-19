@@ -19,7 +19,6 @@ O QUE A PAGINA FAZ
   Pareceres No fim de cada Sprint ha um parecer escrito pelo Gemini sobre
             aquela etapa, e a aba "Parecer geral" junta todas. Os pareceres
             gerados entram no laudo completo (HTML).
-  Apresentar  Roteiro do pitch e downloads.
 
 ARQUIVOS DESTA PASTA
   app.py                     A pagina (leitura do .txt, tabelas, graficos, Gemini).
