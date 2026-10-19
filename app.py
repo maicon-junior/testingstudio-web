@@ -119,7 +119,7 @@ REFERENCIAS = [
     {"n": 10, "grupo": "Normas e guias", "curto": "SWEBOK v3.0 (2014)",
      "texto": "BOURQUE, P.; FAIRLEY, R. E. (ed.). Guide to the Software Engineering Body of Knowledge "
               "(SWEBOK), version 3.0. IEEE Computer Society, 2014. cap. 4: Software Testing.",
-     "uso": "Verificação e validação, oráculo de teste e terminologia geral.",
+     "uso": "Verificação e validação, rastreabilidade de requisitos, oráculo de teste e terminologia geral.",
      "link": ""},
     {"n": 11, "grupo": "Objeto de teste", "curto": "IBM Informix 4GL",
      "texto": "IBM. IBM Informix 4GL Reference Manual. Tipo de dado DECIMAL(p,s).",
@@ -129,6 +129,12 @@ REFERENCIAS = [
      "texto": "PIFFER, F. Manual de laboratório, Sprint 1: TestingStudio Web, auditoria de caixa-preta "
               "(PCE e AVL) do CAD0001. Teste de Software I (ementa 62371). Joinville: Univille, 2026.",
      "uso": "Modelo de especificação usado como oráculo (o CAD0001 de exemplo) e a tabela dos pontos de fronteira.",
+     "link": ""},
+    {"n": 13, "grupo": "Requisitos e rastreabilidade", "curto": "Molinari (2008)",
+     "texto": "MOLINARI, L. Testes funcionais de software. Florianópolis: Visual Books, 2008. 214 p. "
+              "ISBN 978-85-7502-234-4.",
+     "uso": "Derivação de casos de teste a partir de requisitos, fluxos principal, alternativo e de exceção, "
+            "e matriz de rastreabilidade (Sprint 4).",
      "link": ""},
 ]
 REF = {r["n"]: r for r in REFERENCIAS}
@@ -140,7 +146,7 @@ BASES = {
     "caixa_branca": [(2, "cap. 4"), (5, ""), (8, "seções 4.3.1 e 4.3.2")],
     "fluxo": [(2, "cap. 4"), (6, "")],
     "mutacao": [(1, "teste de mutação"), (7, "")],
-    "validacao": [(1, "cap. 1 e 4"), (10, "cap. 4"), (12, "")],
+    "validacao": [(1, "cap. 2 e 4"), (13, ""), (10, "cap. 1 e 4"), (12, "")],
 }
 
 GLOSSARIO = [
@@ -161,7 +167,10 @@ GLOSSARIO = [
     ("Teste de unidade", "Testar uma peça do programa sozinha, aqui a função de cálculo, antes de juntá-la ao resto."),
     ("Asserção", "Uma afirmação que o teste confere: \"com estes valores, a resposta tem de ser esta\". Se não for, o teste falha."),
     ("Driver", "O programa que chama a peça em teste com os dados de cada caso e recolhe a resposta. Aqui, a própria ferramenta."),
-    ("Rastreabilidade", "Poder apontar, para cada regra do combinado, quais testes a verificam."),
+    ("Rastreabilidade", "Poder apontar, para cada regra do combinado, quais testes a verificam, e para cada teste, qual regra ele verifica."),
+    ("Requisito (REQ)", "Uma regra do que o programa deve fazer, escrita a partir da especificação. Cada uma recebe um número: REQ01, REQ02..."),
+    ("Matriz de rastreabilidade (RTM)", "Tabela que cruza requisitos e casos de teste. Prova que tudo o que foi pedido foi testado e que tudo o que foi testado foi pedido."),
+    ("Fluxo principal, alternativo e de exceção", "O caminho feliz; os desvios aceitáveis, como um valor no limite; e os bloqueios, quando o programa deve recusar."),
 ]
 
 
@@ -218,13 +227,18 @@ def registrar_fonte(nome: str, dados: bytes, origem: str, ident) -> None:
         "fonte_sha": hashlib.sha256(dados).hexdigest(),
         "fonte_quando": agora().strftime("%d/%m/%Y %H:%M:%S"),
     })
-    st.session_state.pop("parecer", None)
+    esquecer_pareceres()
+
+
+def esquecer_pareceres() -> None:
+    for chave in [c for c in st.session_state if c.startswith("parecer::")]:
+        del st.session_state[chave]
 
 
 def esquecer_fonte() -> None:
     for chave in [c for c in st.session_state if c.startswith("fonte_")]:
         del st.session_state[chave]
-    st.session_state.pop("parecer", None)
+    esquecer_pareceres()
 
 
 # ==========================================================================
@@ -470,6 +484,22 @@ ESTILO_CSS = """
 .ts-cartao pre { margin: .4rem 0 .5rem; padding: .7rem .85rem; border-radius: 10px; background: var(--ts-relevo);
   color: var(--ts-tinta); font-family: 'IBM Plex Mono', Consolas, monospace; font-size: .85rem; white-space: pre; overflow-x: auto; }
 
+.ts-regra small.ts-req { font-size:.72rem; letter-spacing:.04em; color: var(--ts-destaque); font-weight:600; margin:0 0 .1rem; }
+
+/* ---- abas: as principais cabem numa linha so ---- */
+[data-testid="stTabs"] [role="tablist"] { gap: .9rem !important; }
+[data-testid="stTab"] p { font-size: .86rem !important; }
+
+/* ---- fluxos do caso de uso ---- */
+.ts-fluxos { display:grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: .9rem; margin: .4rem 0 1rem; }
+.ts-fluxo { background: var(--ts-cartao); border:1px solid var(--ts-linha); border-top-width: 4px; border-radius: 14px;
+  padding: .95rem 1.1rem; display:flex; flex-direction:column; gap:.45rem; min-width:0; }
+.ts-fluxo-ok { border-top-color: var(--ts-ok); } .ts-fluxo-alerta { border-top-color: var(--ts-alerta); }
+.ts-fluxo-ruim { border-top-color: var(--ts-ruim); }
+.ts-fluxo .ts-texto { margin:0; color: var(--ts-suave); font-size:.9rem; line-height:1.45; }
+.ts-fluxo .ts-detalhe { margin:0; color: var(--ts-suave); font-size:.82rem; overflow-wrap:anywhere; }
+@media (max-width: 760px) { .ts-fluxos { grid-template-columns: 1fr; } }
+
 /* ---- calculo do Epsilon ---- */
 .ts-contas { display:grid; gap: .9rem; margin: .4rem 0 1rem; }
 .ts-conta .ts-tecnico { margin: 0 0 .6rem; }
@@ -679,17 +709,21 @@ def casos_da_regra(chave, casos, spec):
                                     for p, v in zip(params, c["entradas"]))]
 
 
+def falhas_da_regra(chave, cobrem):
+    """Casos que verificam a regra e falharam por causa dela."""
+    return [c["id"] for c in cobrem if c["status"] == "Reprovado" and (
+        (chave == "entrada" and c["achado"] == "ERRO") or
+        (chave == "faixa" and c["achado"] in ("INVALIDO_ACEITO", "VALIDO_REJEITADO")) or
+        (chave == "formula" and c["achado"] not in ("INVALIDO_ACEITO", "VALIDO_REJEITADO")) or
+        chave == "nulo")]
+
+
 def situacao_das_regras(d):
     """Para cada regra do combinado: quantos testes a verificam e quais falharam."""
     situacao = []
     for regra in REGRAS:
         cobrem = casos_da_regra(regra["chave"], d["casos_lista"], SPEC)
-        falhas = [c["id"] for c in cobrem if c["status"] == "Reprovado" and (
-            (regra["chave"] == "entrada" and c["achado"] == "ERRO") or
-            (regra["chave"] == "faixa" and c["achado"] in ("INVALIDO_ACEITO", "VALIDO_REJEITADO")) or
-            (regra["chave"] == "formula" and c["achado"] not in ("INVALIDO_ACEITO", "VALIDO_REJEITADO")) or
-            regra["chave"] == "nulo")]
-        situacao.append((len(cobrem), falhas))
+        situacao.append((len(cobrem), falhas_da_regra(regra["chave"], cobrem)))
     return situacao
 
 
@@ -698,7 +732,7 @@ def html_regras(d) -> str:
     for i, (regra, (verificada, falhas)) in enumerate(zip(REGRAS, situacao_das_regras(d)), 1):
         estado = chip(f"Não cumprida em {len(falhas)} teste{'s' if len(falhas) > 1 else ''}", "ruim") if falhas else (
             chip("Cumprida", "ok") if verificada else chip("Sem teste", "neutro"))
-        linhas.append(f'<div class="ts-regra"><span class="ts-n">{i}</span><div><b>{esc(regra["titulo"])}</b>'
+        linhas.append(f'<div class="ts-regra"><span class="ts-n">{i}</span><div><small class="ts-req">REQ{i:02d}</small><b>{esc(regra["titulo"])}</b>'
                       f'<small>{esc(regra["detalhe"])}</small></div><div class="ts-direita">{estado}'
                       f'<small>verificada em {verificada} testes</small></div></div>')
     if len(REGRAS) == 1:
@@ -1123,8 +1157,14 @@ def gerar_relatorio_html(d) -> str:
     q, a, mut, m = d["qualidade"], d["analise"], d["mutacao"], d["analise"]["metricas"]
     cob, crit = a["cobertura"], a["criterios"]
     v = d["suite"]
-    parecer = (f"<h2>Parecer do Gemini ({esc(d['parecer_modelo'])})</h2>"
-               f"<pre class='parecer'>{esc(d['parecer'])}</pre>") if d.get("parecer") else ""
+    pareceres = d.get("pareceres", {})
+    parecer = ""
+    if pareceres:
+        nomes = {**{k: e["titulo"] for k, e in ETAPAS.items()}, "geral": "Parecer geral"}
+        parecer = "<h2 class='anexo'>Pareceres escritos com o Gemini</h2><p class='nota'>Textos redigidos por IA a partir dos números deste laudo.</p>" + "".join(
+            f"<h3>{esc(nomes[k])}</h3><pre class='parecer'>{esc(pareceres[k]['texto'])}</pre>"
+            f"<p class='nota'>Modelo {esc(pareceres[k]['modelo'])}, {esc(pareceres[k]['quando'])}.</p>"
+            for k in ["geral"] + list(ETAPAS) if k in pareceres)
     dot = json.dumps(motor.grafo_em_dot(a["grafo"], set(a["nos_cobertos"]), set(a["arestas_cobertas"]))
                      ).replace("</", "<\\/")
 
@@ -1227,8 +1267,13 @@ pre.parecer {{ white-space:pre-wrap; font-family:inherit; background: var(--ts-r
 <p>MS = Md ÷ (Mt − Me) × 100 = {mut['Md']} ÷ ({mut['Mt']} − {mut['Me']}) × 100 = <b>{texto_ms(mut)}</b></p>
 {tabela(d['mutantes'])}
 
-<h2 class="anexo">Anexo E. Validação da suíte de testes</h2>
+<h2 class="anexo">Anexo E. Validação: requisitos, rastreabilidade e suíte de testes</h2>
 {base("validacao")}
+<div class="kpis"><div class="kpi"><b>{d['rtm']['ida'][0]}/{d['rtm']['ida'][1]}</b><span>requisitos cobertos (ida)</span></div>
+<div class="kpi"><b>{d['rtm']['volta'][0]}/{d['rtm']['volta'][1]}</b><span>testes rastreados (volta)</span></div></div>
+<h3>Requisitos derivados da especificação</h3>{tabela(d['requisitos'])}
+<h3>Casos de teste por fluxo</h3>{html_fluxos(d['casos_lista'])}{tabela(d['derivados'])}
+<h3>Matriz de rastreabilidade (RTM)</h3>{html_bidirecional(d['rtm'])}{tabela(d['matriz_rtm'])}
 <div class="kpis"><div class="kpi"><b>{v['ok']}/{v['total']}</b><span>conferências atendidas</span></div>
 <div class="kpi"><b>{v['asercoes']}</b><span>asserções executadas</span></div><div class="kpi"><b>{v['passaram']}</b><span>passaram</span></div>
 <div class="kpi"><b>{v['falharam']}</b><span>falharam (acusaram defeito)</span></div></div>
@@ -1253,7 +1298,7 @@ em Python a lógica da função 4GL carregada (IF, WHILE, LET, RETURN, comparaç
 # ==========================================================================
 # PASSO 4 - Gemini: teste da chave e parecer
 # ==========================================================================
-LIMITE_DE_PARECERES = 10     # por visita, quando a chave e a do servidor (protege a sua cota)
+LIMITE_DE_PARECERES = 15     # por visita, quando a chave e a do servidor (protege a sua cota)
 
 
 def chave_do_servidor() -> str:
@@ -1334,109 +1379,158 @@ def testar_chave(api_key: str, modelo: str) -> dict:
                 "mensagem": sem_chave(f"Não foi possível testar a chave: {erro}", api_key)}
 
 
-def _dados_para_o_gemini(fonte_funcao, d) -> str:
-    """Bloco de dados comum aos dois pedidos (parecer e fala do pitch)."""
+def secoes_para_o_gemini(fonte_funcao, d) -> dict:
+    """Os dados de cada etapa, ja calculados pela ferramenta, em blocos que o Gemini le."""
     q, a, mut, m = d["qualidade"], d["analise"], d["mutacao"], d["analise"]["metricas"]
     cob, crit = a["cobertura"], a["criterios"]
-    v = d["suite"]
+    v, rtm = d["suite"], d["rtm"]
     conferencias = "\n".join(f"- {c['pergunta']} ({c['tecnico']}): {c['curto']}, "
-                             f"{'atendido' if c['ok'] else 'pendente'}" for c in v["criterios"])
-    achados = "\n".join(f"- {ACHADOS[c][0]}: casos {', '.join(ids)}" for c, ids in q["achados"].items()) \
-        or "- nenhum"
-    regras = "\n".join(f"{i}. {r['formal']}" for i, r in enumerate(REGRAS, 1))
+                             f"{'atendido' if c['ok'] else 'pendente'}. {c['evidencia']}" for c in v["criterios"])
+    achados = "\n".join(f"- {ACHADOS[c][0]}: casos {', '.join(ids)}. {ACHADOS[c][1]}"
+                        for c, ids in q["achados"].items()) or "- nenhum"
+    regras = "\n".join(f"REQ{i:02d}. {r['formal']}" for i, r in enumerate(REGRAS, 1))
     if SPEC.get("enunciado", "").strip():
         regras = f"Enunciado: {SPEC['enunciado'].strip()}\n" + regras
-    referencias = "\n".join(f"- [{r['n']}] {r['texto']}" for r in REFERENCIAS)
     vivos = d["mutantes"][d["mutantes"]["Estado"] == "Vivo"]
-    return f"""<especificacao>
-{regras}
-</especificacao>
-
-<funcao_sob_teste>
-{fonte_funcao}
-</funcao_sob_teste>
-
-<epsilon>{d['justificativa']}</epsilon>
-
-<caixa_preta>
-casos executados: {q['total']} | aprovados: {q['aprovados']} | reprovados: {q['reprovados']}
+    por_fluxo = "\n".join(f"- {f}: {', '.join(c['id'] for c in d['casos_lista'] if fluxo_do_caso(c) == f) or 'nenhum'}"
+                          for f in FLUXOS)
+    return {
+        "especificacao": f"<especificacao>\n{regras}\n</especificacao>",
+        "funcao": f"<funcao_sob_teste>\n{fonte_funcao}\n</funcao_sob_teste>",
+        "caixa_preta": f"""<caixa_preta>
+{d['justificativa']}
+calculo_do_epsilon_csv:
+{tabela_epsilon(SPEC).to_csv(index=False)}
+casos executados: {q['total']} | aprovados: {q['aprovados']} | reprovados: {q['reprovados']} | sem resposta definida: {q['sem_oraculo']}
 classes de equivalência cobertas: {q['classes'][0]} de {q['classes'][1]}
 pontos de fronteira cobertos: {q['pontos'][0]} de {q['pontos'][1]}
+classes_csv:
+{d['pce'].to_csv(index=False)}
+pontos_de_fronteira_csv:
+{d['pontos'].to_csv(index=False)}
 achados:
 {achados}
-</caixa_preta>
-
-<caixa_branca>
+</caixa_preta>""",
+        "caixa_branca": f"""<caixa_branca>
 N = {m['N']} | E = {m['E']} | P = {m['P']} | R = {m['R']}
 V(G) = E - N + 2 = {m['v_topologico']} | V(G) = P + 1 = {m['v_logico']} | V(G) = R = {m['v_espacial']}
 Todos-Nós: {cob['Todos-Nós'][0]} de {cob['Todos-Nós'][1]} | Todas-Arestas: {cob['Todas-Arestas'][0]} de {cob['Todas-Arestas'][1]} | caminhos completos: {cob['Todos-Caminhos'][0]} de {cob['Todos-Caminhos'][1]}
 nos_csv:
 {d['nos'].to_csv(index=False)}
+o_que_cada_caso_percorre_csv:
+{d['execucoes'].to_csv(index=False)}
 caminhos_csv:
 {d['caminhos'].to_csv(index=False)}
-</caixa_branca>
-
-<fluxo_de_dados>
+</caixa_branca>""",
+        "fluxo_mutacao": f"""<fluxo_de_dados>
 {' | '.join(f"{nome}: {par[0]} de {par[1]}" for nome, par in crit.items())}
 variaveis_csv:
 {d['variaveis'].to_csv(index=False)}
+pares_def_uso_csv:
+{d['pares'].to_csv(index=False)}
 </fluxo_de_dados>
 
 <mutacao>
 Mt = {mut['Mt']} | Md = {mut['Md']} | Me = {mut['Me']} | MS = {texto_ms(mut)}
 mutantes_vivos_csv:
 {vivos.to_csv(index=False) if len(vivos) else 'nenhum'}
-</mutacao>
-
-<validacao_da_suite>
-{v['ok']} de {v['total']} conferências atendidas | asserções: {v['asercoes']}, passaram {v['passaram']}, falharam {v['falharam']}
+</mutacao>""",
+        "validacao": f"""<validacao>
+requisitos_csv:
+{d['requisitos'].to_csv(index=False)}
+rastreabilidade: ida (requisito -> teste) {rtm['ida'][0]} de {rtm['ida'][1]}; volta (teste -> requisito) {rtm['volta'][0]} de {rtm['volta'][1]}
+casos por fluxo do caso de uso:
+{por_fluxo}
+casos_derivados_csv:
+{d['derivados'].to_csv(index=False)}
+conferências da suíte ({v['ok']} de {v['total']} atendidas):
 {conferencias}
-</validacao_da_suite>
-
-<achado_central>{d['achado']}</achado_central>
-
-<casos_de_teste_csv>
-{d['casos'].to_csv(index=False)}
-</casos_de_teste_csv>
-
-<referencias>
-{referencias}
-</referencias>"""
+asserções: {v['asercoes']} executadas, {v['passaram']} passaram, {v['falharam']} falharam
+</validacao>""",
+        "achado": f"<achado_central>{d['achado']}</achado_central>",
+        "casos": f"<casos_de_teste_csv>\n{d['casos'].to_csv(index=False)}\n</casos_de_teste_csv>",
+        "referencias": "<referencias>\n" + "\n".join(f"- [{r['n']}] {r['texto']}" for r in REFERENCIAS)
+                       + "\n</referencias>",
+    }
 
 
-def montar_prompt(fonte_funcao, d) -> str:
-    return f"""Você é um auditor de teste de software. Escreva, em português do Brasil, um parecer
-de teste da função {FUNCAO_ALVO} (arquivo {d['arquivo']}), com foco na QUALIDADE DO PRODUTO DE TESTE
-(adequação e cobertura do conjunto de casos) e nos defeitos revelados.
+ETAPAS = {
+    "s1": {"titulo": "Sprint 1: caixa-preta", "curto": "caixa-preta",
+           "secoes": ["especificacao", "funcao", "caixa_preta", "casos"],
+           "pede": "1. As classes de equivalência e os pontos de fronteira cobrem bem a especificação?\n"
+                   "2. O cálculo do Épsilon e a escolha do Off-Point estão justificados?\n"
+                   "3. Que defeitos os testes revelaram e qual a correção no fonte?\n"
+                   "4. Que casos de teste ainda valeria acrescentar?"},
+    "s2": {"titulo": "Sprint 2: caixa-branca", "curto": "caixa-branca",
+           "secoes": ["funcao", "caixa_branca"],
+           "pede": "1. Leitura do grafo: nós, arestas, nós predicativos e regiões.\n"
+                   "2. V(G) pelos três métodos e o que ele diz sobre o mínimo de testes.\n"
+                   "3. Cobertura de nós, arestas e caminhos; caminhos não percorridos e possíveis infactíveis.\n"
+                   "4. Recomendações."},
+    "s3": {"titulo": "Sprint 3: fluxo de dados e mutação", "curto": "fluxo de dados e mutação",
+           "secoes": ["funcao", "fluxo_mutacao"],
+           "pede": "1. Critérios de fluxo de dados atendidos e pares Def-Uso não exercitados.\n"
+                   "2. Escore de mutação, mutantes vivos e quais parecem equivalentes.\n"
+                   "3. O que isso diz sobre a força da suíte.\n"
+                   "4. Recomendações."},
+    "s4": {"titulo": "Sprint 4: validação", "curto": "validação",
+           "secoes": ["especificacao", "validacao", "casos"],
+           "pede": "1. Os requisitos derivados da especificação estão completos e claros?\n"
+                   "2. Os casos de teste cobrem o fluxo principal, os alternativos e os de exceção?\n"
+                   "3. A matriz de rastreabilidade fecha nos dois sentidos? O que falta?\n"
+                   "4. As conferências da suíte e as asserções permitem confiar no veredito?\n"
+                   "5. Conclusão sobre a validação."},
+}
 
-Estrutura do parecer:
-1. Resumo executivo (3 a 5 linhas).
-2. Caixa-preta: classes de equivalência, valor limite e justificativa do Épsilon.
-3. Caixa-branca: nós, arestas, V(G) pelos três métodos e cobertura de nós, arestas e caminhos.
-4. Fluxo de dados e mutação: pares Def-Uso cobertos, escore de mutação e mutantes vivos.
-5. Validação da suíte: oráculo, rastreabilidade, asserções e as conferências atendidas.
-6. O que as técnicas dizem em conjunto, defeitos revelados e correção sugerida no fonte.
-7. Próximos testes recomendados.
-
-Use somente os dados abaixo, que já foram calculados pela ferramenta. Ao citar literatura,
-use apenas as referências listadas e não invente citações literais nem números de página.
-
-{_dados_para_o_gemini(fonte_funcao, d)}"""
+REGRAS_DO_TEXTO = """Regras:
+- Escreva em português do Brasil, em Markdown, com títulos curtos (###) e frases diretas.
+- Use somente os dados abaixo, que já foram calculados pela ferramenta. Não invente números,
+  casos, defeitos nem funcionalidades. Se um dado não estiver abaixo, diga que não foi medido.
+- Cite números exatos (por exemplo, "7 de 19 testes").
+- Ao citar literatura, use apenas as referências listadas, pelo número entre colchetes,
+  sem inventar citações literais nem páginas."""
 
 
-def montar_prompt_pitch(fonte_funcao, d) -> str:
-    return f"""Você vai ajudar um estudante a apresentar um pitch de 5 minutos do TestingStudio Web,
-uma ferramenta web que audita funções de programas 4GL/Logix (nesta análise, {FUNCAO_ALVO}) com caixa-preta, caixa-branca,
-fluxo de dados, teste de mutação e validação da suíte. O público é o professor e a turma de Teste de Software.
+def montar_prompt_etapa(chave: str, fonte_funcao, d) -> str:
+    etapa, secoes = ETAPAS[chave], secoes_para_o_gemini(fonte_funcao, d)
+    dados = "\n\n".join(secoes[s] for s in etapa["secoes"] + ["referencias"])
+    return f"""Você é um auditor de teste de software. Escreva o parecer da etapa "{etapa['titulo']}"
+da análise da função {FUNCAO_ALVO} (arquivo {d['arquivo']}), com foco na QUALIDADE DO PRODUTO DE TESTE.
+Tamanho: entre 200 e 350 palavras.
 
-Escreva, em português do Brasil, a FALA do pitch, em primeira pessoa e tom natural, dividida em:
-problema, solução, demonstração (o que mostrar em cada passo), evidências com os números,
-o achado principal e próximos passos. Marque o tempo sugerido de cada parte.
-Depois, liste 5 perguntas prováveis do professor com uma resposta curta para cada uma.
+Responda, nesta ordem:
+{etapa['pede']}
 
-Use somente os números abaixo. Não invente resultados, citações nem funcionalidades.
+{REGRAS_DO_TEXTO}
 
-{_dados_para_o_gemini(fonte_funcao, d)}"""
+{dados}"""
+
+
+def montar_prompt_geral(fonte_funcao, d, pareceres: dict) -> str:
+    secoes = secoes_para_o_gemini(fonte_funcao, d)
+    anteriores = "\n\n".join(f"<parecer_da_etapa nome=\"{ETAPAS[k]['titulo']}\">\n{t}\n</parecer_da_etapa>"
+                             for k, t in pareceres.items()) or "(nenhum parecer de etapa foi gerado ainda)"
+    return f"""Você é um auditor de teste de software. Escreva o PARECER GERAL da análise da função
+{FUNCAO_ALVO} (arquivo {d['arquivo']}), juntando as quatro etapas: caixa-preta, caixa-branca,
+fluxo de dados e mutação, e validação. Tamanho: entre 400 e 650 palavras.
+
+Estrutura:
+### Resumo para quem não é da área
+4 a 6 linhas, sem termos técnicos: o programa faz o que promete? os testes são confiáveis?
+### Veredito técnico
+### O que cada etapa mostrou
+Um parágrafo curto por etapa.
+### Defeitos encontrados e correção
+### Limites desta análise
+### Recomendações
+
+{REGRAS_DO_TEXTO}
+- Os pareceres de etapa abaixo (se houver) foram escritos antes; use-os como apoio, mas confira
+  sempre com os números.
+
+{chr(10).join(secoes[s] for s in ["especificacao", "funcao", "caixa_preta", "caixa_branca", "fluxo_mutacao", "validacao", "achado", "referencias"])}
+
+{anteriores}"""
 
 
 # ==========================================================================
@@ -1743,7 +1837,7 @@ caixa-preta, caixa-branca e teste baseado em defeitos. Depois valida a própria 
 2. Sprint 1: classes de equivalência, valor limite com ε = {formato_br(d['epsilon'])} e a matriz de cobertura.
 3. Sprint 2: o grafo com N = {m['N']}, E = {m['E']}, P = {m['P']}, R = {m['R']} e V(G) = {m['V']} pelos três métodos.
 4. Sprint 3: pares Def-Uso e mutantes, com o escore de mutação.
-5. Sprint 4: as asserções que o driver executou e as {v['total']} conferências da própria suíte.
+5. Sprint 4: os requisitos derivados da especificação, os casos por fluxo, a matriz de rastreabilidade nos dois sentidos e as {v['total']} conferências da suíte.
 6. Trocar um valor na aba de testes extras ou editar o fonte e ver tudo recalcular.
 
 **4. Evidências (1 min)**
@@ -1754,23 +1848,58 @@ caixa-preta, caixa-branca e teste baseado em defeitos. Depois valida a própria 
 | Caixa-branca | Todos-Nós {porcento(cob['Todos-Nós'])}; Todas-Arestas {porcento(cob['Todas-Arestas'])}; caminhos {cob['Todos-Caminhos'][0]} de {cob['Todos-Caminhos'][1]} |
 | Fluxo de dados | Todos-Usos: {a['criterios']['Todos-Usos'][0]} de {a['criterios']['Todos-Usos'][1]} pares Def-Uso |
 | Mutação | Mt = {mut['Mt']}, Md = {mut['Md']}, Me = {mut['Me']}, MS = {texto_ms(mut)} |
-| Validação da suíte | {v['ok']} de {v['total']} conferências atendidas; {v['asercoes']} asserções, {v['passaram']} passaram e {v['falharam']} falharam |
+| Validação | requisitos cobertos {d['rtm']['ida'][0]}/{d['rtm']['ida'][1]}; testes rastreados {d['rtm']['volta'][0]}/{d['rtm']['volta'][1]}; {v['ok']} de {v['total']} conferências atendidas; {v['asercoes']} asserções, {v['falharam']} falharam |
 
 **5. O achado (30 s)**
 {d['achado']}
 
 **6. Limites e próximos passos (30 s)**
-O interpretador entende DEFINE, IF, WHILE, LET e RETURN; não é o compilador Informix e não acessa banco.
-Próximos passos: FOR e CASE, chamadas entre funções (teste de integração) e geração automática dos casos que faltam.
+O interpretador entende DEFINE, IF, CASE, WHILE, FOR, LET e RETURN; não é o compilador Informix e não acessa banco.
+Próximos passos: chamadas entre funções (teste de integração), parâmetros de texto e geração automática dos casos que faltam.
 """
 
 
-# ---- Sprint 4: validacao da propria suite de testes --------------------------
-SITUACOES = ["Caminho feliz", "Fronteira", "Exceção"]
+# ---- Sprint 4: requisitos, casos de teste por fluxo e rastreabilidade ---------
+FLUXOS = ["Fluxo principal", "Fluxo alternativo", "Fluxo de exceção"]
+EXPLICA_FLUXO = {
+    "Fluxo principal": "O caminho feliz: valores comuns, tudo dá certo e a conta é feita.",
+    "Fluxo alternativo": "Desvios aceitáveis: valor exatamente no limite ou campo em branco que a regra aceita. "
+                         "O programa se adapta sem quebrar.",
+    "Fluxo de exceção": "Bloqueios: valor fora da faixa (ou em branco, se a regra recusar). O programa deve "
+                        "interromper e devolver o erro combinado.",
+}
 TEXTO_UNIDADE = (
     "Nível de teste: unidade. A função de cálculo é testada isolada do resto do sistema. A ferramenta faz o "
     "papel de driver: chama a função com os dados de cada teste e confere a resposta com uma asserção, cujo "
     "valor esperado vem da especificação. Não são necessários stubs, porque a função não chama outros módulos.")
+
+
+def requisitos():
+    """Os requisitos (REQ01, REQ02...) saem das regras da especificação, na mesma ordem."""
+    return [{"id": f"REQ{i:02d}", **r} for i, r in enumerate(REGRAS, 1)]
+
+
+def rastreio_do_caso(caso):
+    """Requisitos que um caso de teste verifica. Sem resposta definida, o caso não verifica nenhum."""
+    if caso["status"] == "Sem oráculo":
+        return []
+    return [r["id"] for r in requisitos() if casos_da_regra(r["chave"], [caso], SPEC)]
+
+
+def fluxo_do_caso(caso) -> str:
+    """Principal (caminho feliz), alternativo (limite aceito, branco aceito) ou exceção (bloqueio)."""
+    params, valores = SPEC["params"], caso["entradas"]
+    if any(cp.fora_da_faixa(p, v) for p, v in zip(params, valores)) or \
+            (SPEC["nulo"] == "invalido" and any(v is None for v in valores)):
+        return "Fluxo de exceção"
+    if any(v is None for v in valores) or any(cp.ponto_de(p, v).startswith("On-Point") for p, v in zip(params, valores)):
+        return "Fluxo alternativo"
+    return "Fluxo principal"
+
+
+def foco_do_caso(caso) -> str:
+    texto = _descreve_entrada(caso, [p["nome"] for p in SPEC["params"]])
+    return texto[:1].upper() + texto[1:] if texto else ""
 
 
 def regra_do_caso(caso):
@@ -1779,38 +1908,124 @@ def regra_do_caso(caso):
     return next((i, r) for i, r in enumerate(REGRAS, 1) if r["chave"] == chave)
 
 
-def situacao_do_caso(caso) -> str:
-    return cp.situacao_do_caso(SPEC, caso["entradas"])
-
-
 def texto_asercao(caso) -> str:
     argumentos = ", ".join("None" if v is None else str(v) for v in caso["entradas"])
     return f"assert {FUNCAO_ALVO}({argumentos}) == {caso['esperado']}"
 
 
+def _resultado(c) -> str:
+    if c["status"] == "Aprovado":
+        return "✓ Passou"
+    if c["status"] == "Reprovado":
+        return f"✕ Falhou: obteve {'erro' if c['erro'] else c['obtido']}"
+    return "— sem resposta definida"
+
+
 def tabela_asercoes(casos) -> pd.DataFrame:
     linhas = []
     for c in casos:
-        if c["status"] == "Aprovado":
-            resultado = "✓ Passou"
-        elif c["status"] == "Reprovado":
-            resultado = f"✕ Falhou: obteve {'erro' if c['erro'] else c['obtido']}"
-        else:
-            resultado = "— sem resposta definida"
         numero, regra = regra_do_caso(c)
-        linhas.append({"Teste": c["id"], "Situação": situacao_do_caso(c),
-                       "Regra verificada": f"{numero}. {regra['titulo']}",
+        linhas.append({"Teste": c["id"], "Fluxo": fluxo_do_caso(c),
+                       "Regra verificada": f"REQ{numero:02d}. {regra['titulo']}",
                        "Asserção": texto_asercao(c) if c["status"] != "Sem oráculo" else "—",
-                       "Resultado": resultado})
+                       "Resultado": _resultado(c)})
     return pd.DataFrame(linhas)
 
 
-def validar_suite(casos, casos_base, programa, epsilon, qualidade, analise, mutacao) -> dict:
+def rastreabilidade(casos) -> dict:
+    """A matriz de rastreabilidade (RTM) e a cobertura nos dois sentidos."""
+    reqs = requisitos()
+    traco = {c["id"]: rastreio_do_caso(c) for c in casos}
+    por_req = {r["id"]: [c for c in casos if r["id"] in traco[c["id"]]] for r in reqs}
+    cobertos = [r for r in reqs if por_req[r["id"]]]
+    rastreados = [c for c in casos if traco[c["id"]]]
+    return {"requisitos": reqs, "traco": traco, "por_req": por_req,
+            "ida": (len(cobertos), len(reqs)), "volta": (len(rastreados), len(casos)),
+            "sem_teste": [r["id"] for r in reqs if not por_req[r["id"]]],
+            "orfaos": [c["id"] for c in casos if not traco[c["id"]]]}
+
+
+def tabela_requisitos(rtm) -> pd.DataFrame:
+    linhas = []
+    for r in rtm["requisitos"]:
+        casos_r = rtm["por_req"][r["id"]]
+        falhas = falhas_da_regra(r["chave"], casos_r)
+        situacao = ("✕ Coberto, com falha" if falhas else "✓ Coberto e cumprido") if casos_r else "! Sem teste"
+        linhas.append({"Requisito": r["id"], "O que pede": r["formal"], "Testes que o verificam": len(casos_r),
+                       "Testes que falharam": ", ".join(falhas) or "—", "Situação": situacao})
+    return pd.DataFrame(linhas)
+
+
+def tabela_casos_derivados(casos, rtm) -> pd.DataFrame:
+    return pd.DataFrame([{"Caso": c["id"], "Fluxo": fluxo_do_caso(c), "Foco": foco_do_caso(c),
+                          "Rastreio": " → ".join(rtm["traco"][c["id"]]) or "nenhum requisito",
+                          "Esperado": formato_br(c["esperado"]),
+                          "Obtido": "erro" if c["erro"] else formato_br(c["obtido"]),
+                          "Resultado": _resultado(c)} for c in casos])
+
+
+def tabela_rtm(casos, rtm) -> pd.DataFrame:
+    """Linhas = requisitos, colunas = casos. ✓ verificado e passou; ✕ verificado e falhou."""
+    linhas = []
+    for r in rtm["requisitos"]:
+        linha = {"Requisito": r["id"]}
+        for c in casos:
+            marca = ""
+            if r["id"] in rtm["traco"][c["id"]]:
+                marca = "✓" if c["status"] == "Aprovado" else "✕"
+            linha[c["id"]] = marca
+        linha["Total"] = len(rtm["por_req"][r["id"]])
+        linhas.append(linha)
+    return pd.DataFrame(linhas)
+
+
+def html_fluxos(casos) -> str:
+    """Tres quadros: quantos testes em cada fluxo do caso de uso e quantos passaram."""
+    tipos = {"Fluxo principal": "ok", "Fluxo alternativo": "alerta", "Fluxo de exceção": "ruim"}
+    quadros = []
+    for fluxo in FLUXOS:
+        doFluxo = [c for c in casos if fluxo_do_caso(c) == fluxo]
+        julgados = [c for c in doFluxo if c["status"] != "Sem oráculo"]
+        passaram = sum(c["status"] == "Aprovado" for c in julgados)
+        if not doFluxo:
+            selo = chip("Sem teste", "neutro")
+        elif passaram == len(julgados) and julgados:
+            selo = chip("Todos passaram", "ok")
+        else:
+            selo = chip(f"{len(julgados) - passaram} falharam" if julgados else "Sem resposta definida", "ruim"
+                        if julgados else "neutro")
+        quadros.append(f'<article class="ts-fluxo ts-fluxo-{tipos[fluxo]}"><div class="ts-estacao-topo">'
+                       f'<span class="ts-passo">{esc(fluxo)}</span>{selo}</div>'
+                       f'<p class="ts-texto">{esc(EXPLICA_FLUXO[fluxo])}</p><div class="ts-medida">'
+                       f'<b>{len(doFluxo)}</b><span>testes; {passaram} passaram</span></div>'
+                       f'<p class="ts-detalhe">{esc(", ".join(c["id"] for c in doFluxo)) or "nenhum"}</p></article>')
+    return '<div class="ts-fluxos">' + "".join(quadros) + "</div>"
+
+
+def html_bidirecional(rtm) -> str:
+    """As duas perguntas da rastreabilidade bidirecional, com a resposta desta analise."""
+    (ci, ti), (cv, tv) = rtm["ida"], rtm["volta"]
+    ida_ok, volta_ok = ci == ti, cv == tv
+    ida = (f"Sim: os {ti} requisitos têm pelo menos um teste." if ida_ok else
+           f"Não: {', '.join(rtm['sem_teste'])} ainda não tem teste.")
+    volta = (f"Sim: os {tv} testes verificam algum requisito." if volta_ok else
+             f"Não: {len(rtm['orfaos'])} teste(s) sem resposta definida na especificação "
+             f"({', '.join(rtm['orfaos'][:8])}{'…' if len(rtm['orfaos']) > 8 else ''}).")
+    blocos = []
+    for titulo, sentido, (a, b), ok, texto in (
+            ("Tudo o que foi pedido foi testado?", "Ida: requisito → teste", (ci, ti), ida_ok, ida),
+            ("Tudo o que foi testado foi pedido?", "Volta: teste → requisito", (cv, tv), volta_ok, volta)):
+        blocos.append(f'<article class="ts-cartao"><span class="ts-passo">{esc(sentido)}</span><h3>{esc(titulo)}</h3>'
+                      f'<div class="ts-medida"><b>{a} de {b}</b><span>{"requisitos cobertos" if "Ida" in sentido else "testes rastreados"}</span></div>'
+                      f'{_medidor(a / b if b else 0)}<p class="ts-detalhe">{chip("Atendido", "ok") if ok else chip("Pendente", "alerta")} {esc(texto)}</p></article>')
+    return f'<div class="ts-duas">{"".join(blocos)}</div>'
+
+
+def validar_suite(casos, casos_base, programa, epsilon, qualidade, analise, mutacao, rtm) -> dict:
     """Sprint 4: antes do veredito, confere se a propria suite e confiavel."""
     q, cob = qualidade, analise["cobertura"]
     nos, arestas, usos = cob["Todos-Nós"], cob["Todas-Arestas"], analise["criterios"]["Todos-Usos"]
-    regras = [n for n, _ in situacao_das_regras({"casos_lista": casos, "qualidade": q})]
-    por_situacao = {s: sum(situacao_do_caso(c) == s for c in casos) for s in SITUACOES}
+    por_fluxo = {f: sum(fluxo_do_caso(c) == f for c in casos) for f in FLUXOS}
     comuns = [p["comum"] for p in SPEC["params"]]
     isolados = sum(sum(v != comum for v, comum in zip(c["entradas"], comuns)) <= 1 for c in casos_base)
     repetidos = 0
@@ -1819,20 +2034,28 @@ def validar_suite(casos, casos_base, programa, epsilon, qualidade, analise, muta
         repetidos += r["valor"] == c["obtido"] and r["erro"] == c["erro"]
     com_oraculo = q["total"] - q["sem_oraculo"]
     ms = mutacao["MS"]
+    (ci, ti), (cv, tv) = rtm["ida"], rtm["volta"]
     criterios = [
         {"pergunta": "As respostas certas vêm da regra, e não do código?",
          "tecnico": "Oráculo independente da implementação", "ok": q["sem_oraculo"] == 0,
          "curto": f"{com_oraculo} de {q['total']}",
          "evidencia": f"O esperado é calculado só pela especificação. {com_oraculo} de {q['total']} "
                       "testes têm resposta esperada definida."},
-        {"pergunta": "Toda regra do combinado foi testada?",
-         "tecnico": "Rastreabilidade: regra → teste", "ok": all(regras),
-         "curto": f"{sum(1 for n in regras if n)} de {len(regras)} regras",
-         "evidencia": "Testes por regra: " + "; ".join(f"regra {i}: {n}" for i, n in enumerate(regras, 1)) + "."},
-        {"pergunta": "Entraram o uso normal, os limites e os erros?",
-         "tecnico": "Caminho feliz, fronteiras e exceções", "ok": all(por_situacao.values()),
-         "curto": f"{sum(1 for n in por_situacao.values() if n)} de {len(SITUACOES)} tipos",
-         "evidencia": "; ".join(f"{s}: {n} testes" for s, n in por_situacao.items()) + "."},
+        {"pergunta": "Tudo o que foi pedido foi testado?",
+         "tecnico": "Rastreabilidade de ida (requisito → teste)", "ok": ci == ti and ti > 1,
+         "curto": f"{ci} de {ti} requisitos",
+         "evidencia": "Testes por requisito: " + "; ".join(
+             f"{r['id']}: {len(rtm['por_req'][r['id']])}" for r in rtm["requisitos"]) + "."
+             + ("" if ti > 1 else " A especificação ainda não tem as regras do resultado.")},
+        {"pergunta": "Tudo o que foi testado foi pedido?",
+         "tecnico": "Rastreabilidade de volta (teste → requisito)", "ok": cv == tv,
+         "curto": f"{cv} de {tv} testes",
+         "evidencia": "Todo teste verifica algum requisito." if cv == tv else
+                      f"Testes sem requisito correspondente: {', '.join(rtm['orfaos'])}."},
+        {"pergunta": "Entraram o fluxo principal, os alternativos e os de exceção?",
+         "tecnico": "Fluxos do caso de uso", "ok": all(por_fluxo.values()),
+         "curto": f"{sum(1 for n in por_fluxo.values() if n)} de {len(FLUXOS)} fluxos",
+         "evidencia": "; ".join(f"{f}: {n} testes" for f, n in por_fluxo.items()) + "."},
         {"pergunta": "Todo grupo de valores e toda fronteira tiveram teste?",
          "tecnico": "Critérios da PCE e da AVL",
          "ok": q["classes"][0] == q["classes"][1] and q["pontos"][0] == q["pontos"][1],
@@ -1974,7 +2197,7 @@ if ARQUIVOS_DESATUALIZADOS:
 chave_servidor = chave_do_servidor()
 with st.sidebar:
     st.header("Textos com IA")
-    st.caption("O Gemini só redige textos a partir dos resultados. O laudo funciona sem ele.")
+    st.caption("O Gemini escreve os pareceres do fim de cada Sprint e da aba Parecer geral, a partir dos resultados. O laudo funciona sem ele.")
     if chave_servidor:
         # Pagina publicada: a chave vem do servidor e nao existe campo para ela na tela.
         api_key = chave_servidor
@@ -2022,9 +2245,9 @@ identificacao = {"arquivo": st.session_state["fonte_nome"], "linhas": len(origin
                  "quando": st.session_state["fonte_quando"], "sha": st.session_state["fonte_sha"]}
 lugar_da_faixa = st.empty()       # preenchida depois que a funcao e escolhida
 
-aba_laudo, aba_programa, aba_s1, aba_s2, aba_s3, aba_s4, aba_apresentar, aba_fontes = st.tabs(
-    ["Laudo de qualidade", "Programa e especificação", "Sprint 1: caixa-preta", "Sprint 2: caixa-branca",
-     "Sprint 3: dados e mutação", "Sprint 4: validação", "Apresentar", "Fontes"])
+aba_laudo, aba_programa, aba_s1, aba_s2, aba_s3, aba_s4, aba_parecer, aba_apresentar, aba_fontes = st.tabs(
+    ["Laudo", "Programa e especificação", "Sprint 1: caixa-preta", "Sprint 2: caixa-branca",
+     "Sprint 3: dados e mutação", "Sprint 4: validação", "Parecer geral", "Apresentar", "Fontes"])
 
 # ======================= PROGRAMA E ESPECIFICACAO ============================
 with aba_programa:
@@ -2413,7 +2636,8 @@ with aba_s3:
         mutacao = painel_mutacao(analise, "cad")
 
 # ======================= DADOS CONSOLIDADOS =================================
-suite = validar_suite(casos, casos_base, programa, epsilon, qualidade, analise, mutacao)
+rtm = rastreabilidade(casos)
+suite = validar_suite(casos, casos_base, programa, epsilon, qualidade, analise, mutacao, rtm)
 achado = achado_central(qualidade, analise, mutacao)
 pacote = {
     "qualidade": qualidade, "casos": df_casos, "casos_lista": casos, "pce": df_pce, "pontos": df_pontos,
@@ -2422,13 +2646,14 @@ pacote = {
     "nos": tabela_nos(analise), "execucoes": tabela_execucoes(analise), "caminhos": tabela_caminhos(analise),
     "variaveis": tabela_variaveis(analise), "pares": tabela_pares(analise), "mutantes": tabela_mutantes(analise),
     "suite": suite, "criterios_suite": tabela_criterios_suite(suite), "asercoes": tabela_asercoes(casos),
-    "reguas": lista_reguas,
+    "reguas": lista_reguas, "rtm": rtm, "requisitos": tabela_requisitos(rtm),
+    "derivados": tabela_casos_derivados(casos, rtm), "matriz_rtm": tabela_rtm(casos, rtm),
     "epsilon": epsilon, **identificacao,
 }
-assinatura = hashlib.sha256((texto_funcao + df_casos.to_csv() + str(por_bloco) + str(mutacao)).encode()).hexdigest()
-parecer = st.session_state.get("parecer")
-if parecer:
-    pacote.update(parecer=parecer["texto"], parecer_modelo=parecer["modelo"])
+assinatura = hashlib.sha256((texto_funcao + df_casos.to_csv() + str(por_bloco) + str(mutacao) +
+                             cp.especificacao_para_json(SPEC, FUNCAO_ALVO)).encode()).hexdigest()
+pacote["pareceres"] = {k: st.session_state[f"parecer::{k}"] for k in list(ETAPAS) + ["geral"]
+                       if f"parecer::{k}" in st.session_state}
 relatorio_html = gerar_relatorio_html(pacote)
 roteiro = roteiro_do_pitch(pacote)
 
@@ -2444,27 +2669,109 @@ def botoes_de_download(chave: str) -> None:
                        width="stretch", icon=":material/table:")
 
 
+def titulos_menores(texto: str) -> str:
+    """Os titulos do texto da IA (#, ##, ###) viram titulos pequenos, para nao competir com os da pagina."""
+    linhas = []
+    for linha in texto.splitlines():
+        nivel = len(linha) - len(linha.lstrip("#"))
+        if 0 < nivel <= 6 and linha[nivel:nivel + 1] == " ":
+            linha = "#" * min(6, max(nivel, 3) + 2) + linha[nivel:]
+        linhas.append(linha)
+    return "\n".join(linhas)
+
+
+def painel_gemini(chave: str, titulo: str, explicacao: str) -> None:
+    """Parecer escrito pelo Gemini para uma etapa (ou o geral), a partir dos numeros desta analise."""
+    guarda = f"parecer::{chave}"
+    escrito = st.session_state.get(guarda)
+    usos = st.session_state.get("usos_gemini", 0)
+    no_limite = bool(chave_servidor) and usos >= LIMITE_DE_PARECERES
+    st.html(html_explica(titulo, explicacao))
+    if not api_key:
+        st.info("Para gerar o parecer, abra a barra lateral (seta no canto superior esquerdo) e cole a chave "
+                "da API do Gemini.", icon=":material/key:")
+    elif no_limite:
+        st.info(f"Limite de {LIMITE_DE_PARECERES} pareceres por visita atingido. Recarregue a página para "
+                "continuar.", icon=":material/hourglass:")
+    rotulo = "Gerar de novo" if escrito else "Gerar o parecer com Gemini"
+    if st.button(rotulo, key=f"botao_{guarda}", type="secondary" if escrito else "primary",
+                 disabled=not api_key or no_limite, icon=":material/edit_note:"):
+        st.session_state["usos_gemini"] = usos + 1
+        try:
+            with st.spinner("Gemini escrevendo o parecer..."):
+                if chave == "geral":
+                    anteriores = {k: v["texto"] for k, v in pacote["pareceres"].items() if k in ETAPAS}
+                    prompt = montar_prompt_geral(texto_funcao, pacote, anteriores)
+                else:
+                    prompt = montar_prompt_etapa(chave, texto_funcao, pacote)
+                texto, usado = chamar_gemini(api_key, situacao["modelo"] if chave_ok else modelo, prompt)
+            st.session_state[guarda] = {"texto": texto, "modelo": usado, "assinatura": assinatura,
+                                        "quando": agora().strftime("%d/%m/%Y %H:%M")}
+            st.session_state["chave_status"] = {"chave": marca_da(api_key), "ok": True, "modelo": usado,
+                                                "mensagem": f"Chave funcionando. O modelo {usado} respondeu."}
+            st.rerun()
+        except FalhaGemini as falha:
+            st.error(str(falha), icon=":material/error:")
+        except Exception as erro:
+            st.error(sem_chave(f"Não foi possível gerar o parecer: {erro}", api_key), icon=":material/error:")
+    if escrito:
+        if escrito["assinatura"] != assinatura:
+            st.warning("Este parecer foi gerado antes das últimas mudanças no fonte, na especificação ou nos "
+                       "casos. Gere de novo para atualizar.", icon=":material/history:")
+        with st.container(border=True):
+            st.markdown(titulos_menores(escrito["texto"]))
+            st.caption(f"Escrito pelo modelo {escrito['modelo']} em {escrito['quando']}, a partir dos números "
+                       "calculados pela ferramenta.")
+
+
+def parecer_da_etapa(chave: str) -> None:
+    st.divider()
+    painel_gemini(chave, f"Parecer da IA sobre a {ETAPAS[chave]['titulo']}",
+                  f"O Gemini lê os resultados desta etapa ({ETAPAS[chave]['curto']}) e escreve um parecer. "
+                  "Os números vêm sempre da ferramenta; a IA só redige.")
+
+
 # ======================= SPRINT 4: VALIDACAO ================================
 with aba_s4:
     st.html(html_explica(
         "Em palavras simples",
-        "Antes de dizer que o programa tem defeito, é preciso saber se os testes são bons. A Sprint 4 valida a "
-        f"própria suíte de {FUNCAO_ALVO}: de onde vem a resposta certa, se toda regra foi testada, se entraram o uso "
-        "normal, os limites e os erros, e se o resultado se repete.", "validacao"))
+        "A validação confere se o programa faz o que foi pedido, olhando de fora, como o usuário. Cada regra da "
+        "especificação vira um requisito (REQ). De cada requisito saem casos de teste para o fluxo principal "
+        "(caminho feliz), para os fluxos alternativos (limites aceitos) e para os fluxos de exceção (bloqueios). "
+        "A matriz de rastreabilidade prova a cobertura nos dois sentidos: tudo o que foi pedido foi testado, e "
+        "tudo o que foi testado foi pedido.", "validacao"))
     k = st.columns(4)
-    k[0].metric("Conferências atendidas", f"{suite['ok']} de {suite['total']}", border=True)
-    k[1].metric("Asserções executadas", suite["asercoes"], border=True,
-                help="Testes com resposta esperada definida pela especificação.")
-    k[2].metric("Passaram", suite["passaram"], border=True)
-    k[3].metric("Falharam", suite["falharam"], border=True, help="Asserções que acusaram defeito no programa.")
+    k[0].metric("Requisitos cobertos", f"{rtm['ida'][0]} de {rtm['ida'][1]}", border=True,
+                help="Ida da rastreabilidade: requisitos com pelo menos um caso de teste.")
+    k[1].metric("Testes rastreados", f"{rtm['volta'][0]} de {rtm['volta'][1]}", border=True,
+                help="Volta da rastreabilidade: casos de teste que verificam algum requisito.")
+    k[2].metric("Conferências da suíte", f"{suite['ok']} de {suite['total']}", border=True)
+    k[3].metric("Asserções que falharam", f"{suite['falharam']} de {suite['asercoes']}", border=True,
+                help="Asserções que acusaram defeito no programa.")
     if suite["ok"] == suite["total"]:
         st.success("A suíte passou em todas as conferências." + (
             " Por isso as asserções que falharam apontam defeito do programa, e não do teste."
             if suite["falharam"] else ""), icon=":material/verified:")
     else:
-        st.warning("Há conferência pendente. As linhas marcadas com ! mostram onde a suíte pode melhorar.",
-                   icon=":material/rule:")
-    aba_conferencias, aba_asercoes = st.tabs(["Conferências da suíte", "Asserções (teste de unidade)"])
+        st.warning("Há conferência pendente. As linhas marcadas com ! na aba Conferências mostram onde a suíte "
+                   "pode melhorar.", icon=":material/rule:")
+    aba_req, aba_rtm, aba_conferencias, aba_asercoes = st.tabs(
+        ["Requisitos e casos de teste", "Matriz de rastreabilidade (RTM)", "Conferências da suíte",
+         "Asserções (teste de unidade)"])
+    with aba_req:
+        st.subheader("Requisitos derivados da especificação")
+        st.table(pacote["requisitos"].style.hide(axis="index"))
+        st.subheader("Casos de teste por fluxo")
+        st.html(html_fluxos(casos))
+        st.dataframe(pacote["derivados"], hide_index=True, width="stretch", height="content")
+        st.caption("Rastreio: os requisitos que cada caso verifica. Um caso sem resposta definida na especificação "
+                   "não verifica nenhum requisito.")
+    with aba_rtm:
+        st.html(html_bidirecional(rtm))
+        st.subheader("A matriz")
+        st.dataframe(pacote["matriz_rtm"], hide_index=True, width="stretch")
+        st.caption("Linhas: requisitos. Colunas: casos de teste. ✓ = o caso verifica o requisito e passou; "
+                   "✕ = verifica e falhou; vazio = não verifica. A coluna Total conta os casos de cada requisito.")
     with aba_conferencias:
         st.table(pacote["criterios_suite"].style.hide(axis="index"))
     with aba_asercoes:
@@ -2477,57 +2784,45 @@ with aba_s4:
                            icon=":material/code:")
         st.caption(f"Para rodar fora da página: deixe o arquivo na pasta do TestingStudio, junto do motor.py e do "
                    f"{pacote['arquivo']}, e use python test_{FUNCAO_ALVO}.py (ou python -m pytest -v test_{FUNCAO_ALVO}.py).")
+    parecer_da_etapa("s4")
+
+# Pareceres das outras etapas: no fim de cada aba (as abas ja existem; aqui so se acrescenta).
+with aba_s1:
+    parecer_da_etapa("s1")
+with aba_s2:
+    parecer_da_etapa("s2")
+with aba_s3:
+    parecer_da_etapa("s3")
+
+# ======================= PARECER GERAL =======================================
+with aba_parecer:
+    feitos = [ETAPAS[k]["titulo"] for k in ETAPAS if k in pacote["pareceres"]]
+    painel_gemini("geral", "Parecer geral da análise",
+                  "O Gemini junta as quatro etapas (caixa-preta, caixa-branca, fluxo de dados e mutação, validação) "
+                  "num parecer só, que começa com um resumo para quem não é da área. Se você já gerou pareceres "
+                  "nas etapas, eles entram como apoio" + (f" (prontos: {', '.join(feitos)})." if feitos else "."))
+    st.subheader("Pareceres das etapas")
+    for k, etapa in ETAPAS.items():
+        escrito = pacote["pareceres"].get(k)
+        with st.expander(etapa["titulo"] + ("" if escrito else " (ainda não gerado)"), expanded=False,
+                         icon=":material/check_circle:" if escrito else ":material/radio_button_unchecked:"):
+            if escrito:
+                st.markdown(titulos_menores(escrito["texto"]))
+                st.caption(f"Modelo {escrito['modelo']}, {escrito['quando']}.")
+            else:
+                st.caption(f"Gere este parecer no fim da aba {etapa['titulo']}.")
+    st.caption("Todos os pareceres gerados entram no laudo completo (HTML).")
 
 # ======================= APRESENTAR =========================================
 with aba_apresentar:
     st.html(html_explica(
         "Para apresentar",
-        "Comece pela aba Laudo de qualidade: ela foi escrita para quem não é da área. O roteiro abaixo "
+        "Comece pela aba Laudo: ela foi escrita para quem não é da área. O roteiro abaixo "
         "organiza a fala em cerca de cinco minutos, com os números desta análise."))
     botoes_de_download("apresentar")
-    aba_roteiro, aba_ia = st.tabs(["Roteiro da apresentação", "Textos com IA (Gemini)"])
-    with aba_roteiro:
-        st.markdown(roteiro)
-        st.download_button("Baixar o roteiro (Markdown)", roteiro, key="baixar_roteiro",
-                           file_name="roteiro_apresentacao.md", mime="text/markdown", icon=":material/notes:")
-    with aba_ia:
-        st.write("Todos os números são calculados pela ferramenta. Aqui o Gemini só redige um texto a partir deles.")
-        pedido = st.radio("O que o Gemini deve escrever", ["Parecer de auditoria", "Fala para a apresentação"],
-                          horizontal=True, key="pedido_gemini")
-        guarda = "parecer" if pedido == "Parecer de auditoria" else "fala"
-        if not api_key:
-            st.info("Abra a barra lateral (seta no canto superior esquerdo) e cole a chave da API.",
-                    icon=":material/key:")
-        elif not chave_ok:
-            st.info("Use o botão Testar chave, na barra lateral, para confirmar que a chave funciona.",
-                    icon=":material/key:")
-        usos = st.session_state.get("usos_gemini", 0)
-        no_limite = bool(chave_servidor) and usos >= LIMITE_DE_PARECERES
-        if no_limite:
-            st.info(f"Limite de {LIMITE_DE_PARECERES} textos por visita atingido. "
-                    "Recarregue a página para continuar.", icon=":material/hourglass:")
-        if st.button("Escrever o parecer com Gemini" if guarda == "parecer" else "Escrever a fala com Gemini",
-                     type="primary", disabled=not api_key or no_limite, icon=":material/edit_note:"):
-            st.session_state["usos_gemini"] = usos + 1
-            try:
-                with st.spinner("Gemini escrevendo..."):
-                    prompt = (montar_prompt if guarda == "parecer" else montar_prompt_pitch)(texto_funcao, pacote)
-                    texto, usado = chamar_gemini(api_key, situacao["modelo"] if chave_ok else modelo, prompt)
-                st.session_state[guarda] = {"texto": texto, "modelo": usado, "assinatura": assinatura}
-                st.session_state["chave_status"] = {"chave": marca_da(api_key), "ok": True, "modelo": usado,
-                                                    "mensagem": f"Chave funcionando. O modelo {usado} respondeu."}
-                st.rerun()
-            except FalhaGemini as falha:
-                st.error(str(falha), icon=":material/error:")
-            except Exception as erro:
-                st.error(sem_chave(f"Não foi possível gerar o texto: {erro}", api_key), icon=":material/error:")
-        escrito = st.session_state.get(guarda)
-        if escrito:
-            if escrito["assinatura"] != assinatura:
-                st.warning("Este texto foi gerado antes das últimas alterações no fonte ou nos casos. "
-                           "Gere de novo para atualizar.", icon=":material/history:")
-            st.caption(f"Texto gerado pelo modelo {escrito['modelo']}.")
-            st.markdown(escrito["texto"])
+    st.markdown(roteiro)
+    st.download_button("Baixar o roteiro (Markdown)", roteiro, key="baixar_roteiro",
+                       file_name="roteiro_apresentacao.md", mime="text/markdown", icon=":material/notes:")
 
 # ======================= FONTES =============================================
 with aba_fontes:

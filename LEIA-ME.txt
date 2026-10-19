@@ -12,10 +12,14 @@ O QUE A PAGINA FAZ
             predicativos (P), regioes (R), V(G) pelos tres metodos de McCabe
             e cobertura de nos, arestas e caminhos por caso de teste.
   Sprint 3  Fluxo de dados (pares Def-Uso) e teste de mutacao (escore MS).
-  Sprint 4  Validacao da propria suite de testes (oraculo, rastreabilidade,
-            caminho feliz/fronteira/excecao, repetibilidade) e assercoes de
-            teste de unidade, com download dos testes em Python (pytest).
-  Apresentar  Roteiro do pitch e textos com o Gemini.
+  Sprint 4  Validacao: requisitos (REQ01, REQ02...) derivados da especificacao,
+            casos de teste por fluxo (principal, alternativo e de excecao),
+            matriz de rastreabilidade (RTM) nos dois sentidos, conferencias da
+            suite e assercoes de teste de unidade (download em Python/pytest).
+  Pareceres No fim de cada Sprint ha um parecer escrito pelo Gemini sobre
+            aquela etapa, e a aba "Parecer geral" junta todas. Os pareceres
+            gerados entram no laudo completo (HTML).
+  Apresentar  Roteiro do pitch e downloads.
 
 ARQUIVOS DESTA PASTA
   app.py                     A pagina (leitura do .txt, tabelas, graficos, Gemini).
@@ -78,7 +82,7 @@ PUBLICAR ONLINE (a chave do Gemini fica escondida no servidor)
     Ela vai somente no campo Secrets do Streamlit.
   - Com o repositorio publico, qualquer pessoa com o link usa o botao do
     Gemini na sua cota (a chave continua escondida). A pagina limita a
-    10 pareceres por visita. Para restringir a pessoas convidadas, use o
+    15 pareceres por visita. Para restringir a pessoas convidadas, use o
     botao Share da pagina publicada.
   - Depois de 12 horas sem acesso a pagina dorme. Quem abrir o link clica
     em "Yes, get this app back up!" e espera um minuto.
