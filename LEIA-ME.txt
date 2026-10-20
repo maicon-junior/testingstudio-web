@@ -11,14 +11,22 @@ O QUE A PAGINA FAZ
   Sprint 2  Caixa-branca: grafo de fluxo de controle, nos (N), arestas (E),
             predicativos (P), regioes (R), V(G) pelos tres metodos de McCabe
             e cobertura de nos, arestas e caminhos por caso de teste.
-  Sprint 3  Fluxo de dados (pares Def-Uso) e teste de mutacao (escore MS).
+  Sprint 3  Fluxo de dados (pares Def-Uso) e teste de mutacao: operadores AOR,
+            ROR, COR e LVR com exemplo, a suite que enfrenta os mutantes
+            (completa, so PCE, so AVL, so caminho feliz, extras ou
+            personalizada), comparacao entre suites e tabela por operador.
   Sprint 4  Validacao: requisitos (REQ01, REQ02...) derivados da especificacao,
             casos de teste por fluxo (principal, alternativo e de excecao),
             matriz de rastreabilidade (RTM) nos dois sentidos, conferencias da
             suite e assercoes de teste de unidade (download em Python/pytest).
-  Pareceres No fim de cada Sprint ha um parecer escrito pelo Gemini sobre
-            aquela etapa, e a aba "Parecer geral" junta todas. Os pareceres
-            gerados entram no laudo completo (HTML).
+  Pareceres No fim de cada Sprint e na aba "Parecer geral": o parecer do
+            profissional tecnico (veredito e texto, assinado com o nome e a
+            funcao da barra lateral) e o parecer escrito pelo Gemini. Todos
+            entram no laudo. Os do profissional podem ser salvos em .json.
+  Aparencia Barra lateral: cor de destaque (6 opcoes ou personalizada).
+  PDF       Botao "Exportar PDF" na aba Laudo: abre o laudo pronto para A4 e
+            a janela de salvar em PDF. Se o navegador bloquear, permita
+            pop-ups para o site.
 
 ARQUIVOS DESTA PASTA
   app.py                     A pagina (leitura do .txt, tabelas, graficos, Gemini).

@@ -231,8 +231,26 @@ def registrar_fonte(nome: str, dados: bytes, origem: str, ident) -> None:
 
 
 def esquecer_pareceres() -> None:
-    for chave in [c for c in st.session_state if c.startswith("parecer::")]:
+    for chave in [c for c in st.session_state if c.startswith(("parecer::", "prof::"))]:
         del st.session_state[chave]
+
+
+VEREDITOS = ["Sem conclusão", "Aprovado", "Aprovado com ressalvas", "Reprovado"]
+TIPO_DO_VEREDITO = {"Aprovado": "ok", "Aprovado com ressalvas": "alerta", "Reprovado": "ruim", "Sem conclusão": "neutro"}
+
+
+def pareceres_profissionais() -> dict:
+    """Pareceres escritos pelo profissional tecnico, por etapa ('s1'...'s4') e 'geral'."""
+    nome = str(st.session_state.get("prof_nome", "")).strip()
+    funcao = str(st.session_state.get("prof_funcao", "")).strip()
+    saida = {}
+    for chave in ["s1", "s2", "s3", "s4", "geral"]:
+        texto = str(st.session_state.get(f"prof::{chave}::texto", "")).strip()
+        if texto:
+            saida[chave] = {"texto": texto, "veredito": st.session_state.get(f"prof::{chave}::veredito", VEREDITOS[0]),
+                            "nome": nome, "funcao": funcao,
+                            "quando": st.session_state.get(f"prof::{chave}::quando", "")}
+    return saida
 
 
 def esquecer_fonte() -> None:
@@ -484,11 +502,76 @@ ESTILO_CSS = """
 .ts-cartao pre { margin: .4rem 0 .5rem; padding: .7rem .85rem; border-radius: 10px; background: var(--ts-relevo);
   color: var(--ts-tinta); font-family: 'IBM Plex Mono', Consolas, monospace; font-size: .85rem; white-space: pre; overflow-x: auto; }
 
+.ts-parecer-prof p { margin: .45rem 0 0; color: var(--ts-tinta); line-height:1.55; }
+.ts-parecer-topo { display:flex; align-items:center; justify-content:space-between; gap:.6rem; flex-wrap:wrap; }
+.ts-assina { margin-top: .8rem !important; padding-top:.55rem; border-top: 1px dashed var(--ts-linha);
+  color: var(--ts-suave) !important; font-size:.85rem; }
+.ts-pareceres { display:grid; gap: .9rem; }
 .ts-regra small.ts-req { font-size:.72rem; letter-spacing:.04em; color: var(--ts-destaque); font-weight:600; margin:0 0 .1rem; }
+
+/* ---- componentes do Streamlit seguem a cor de destaque escolhida ---- */
+.stApp { --ts-sobre-destaque: light-dark(#ffffff, #0c131b); }
+[data-testid="stBaseButton-primary"] { background-color: var(--ts-destaque) !important; border-color: var(--ts-destaque) !important;
+  color: var(--ts-sobre-destaque) !important; }
+[data-testid="stBaseButton-primary"]:hover { filter: brightness(1.08); }
+[data-testid="stBaseButton-secondary"]:hover, [data-testid="stDownloadButton"] button:hover {
+  border-color: var(--ts-destaque) !important; color: var(--ts-destaque) !important; }
+[data-testid="stTab"][aria-selected="true"] p { color: var(--ts-destaque) !important; }
+[data-testid="stTab"] .react-aria-SelectionIndicator { background-color: var(--ts-destaque) !important; }
+[data-testid="stButtonGroup"] button[aria-checked="true"], [data-testid="stButtonGroup"] button[aria-checked="true"] * {
+  color: var(--ts-destaque) !important; border-color: var(--ts-destaque) !important; }
+[data-testid="stMultiSelect"] [data-baseweb="tag"], [data-testid="stMultiSelectTagsContainer"] span[data-baseweb="tag"] {
+  background-color: var(--ts-destaque) !important; color: var(--ts-sobre-destaque) !important; }
+[data-testid="stMultiSelect"] [data-baseweb="tag"] * { color: var(--ts-sobre-destaque) !important; }
+
+/* ---- impressao da pagina (Imprimir do navegador): centralizada, sem menus ---- */
+@media print {
+  @page { size: A4; margin: 12mm; }
+  [data-testid="stSidebar"], [data-testid="stHeader"], [data-testid="stToolbar"], [data-testid="stFileUploader"],
+  [data-testid="stBaseButton-primary"], [data-testid="stBaseButton-secondary"], [data-testid="stDownloadButton"],
+  [data-testid="stDecoration"], [data-testid="stSidebarCollapsedControl"], iframe { display: none !important; }
+  html, body, .stApp, [data-testid="stAppViewContainer"], [data-testid="stMain"], [data-testid="stMainBlockContainer"],
+  section.main { position: static !important; overflow: visible !important; height: auto !important; margin: 0 !important;
+    left: 0 !important; width: auto !important; min-width: 0 !important; max-width: 100% !important;
+    background: #ffffff !important; color-scheme: light !important; }
+  [data-testid="stTabs"] [role="tablist"] { flex-wrap: wrap !important; overflow: visible !important; }
+  .block-container { max-width: 100% !important; width: 100% !important; padding: 0 !important; margin: 0 auto !important; }
+  .ts-estacoes, .ts-operadores { grid-template-columns: repeat(2, minmax(0,1fr)) !important; }
+  .ts-veredito, .ts-confianca { grid-template-columns: 1fr !important; }
+  .ts-estacao, .ts-regra, .ts-cartao, .ts-operador, .ts-fluxo, .ts-suite { break-inside: avoid; }
+}
 
 /* ---- abas: as principais cabem numa linha so ---- */
 [data-testid="stTabs"] [role="tablist"] { gap: .9rem !important; }
 [data-testid="stTab"] p { font-size: .86rem !important; }
+
+/* ---- operadores e suites de mutacao ---- */
+.ts-operadores { display:grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: .9rem; margin: .4rem 0 .8rem; }
+.ts-operador { background: var(--ts-cartao); border:1px solid var(--ts-linha); border-radius: 14px; padding: .95rem 1.05rem;
+  display:flex; flex-direction:column; gap:.4rem; min-width:0; }
+.ts-operador .ts-sigla { margin:0; font-weight:700; font-size:1.5rem; letter-spacing:.02em; color: var(--ts-destaque); line-height:1; }
+.ts-operador h3 { margin:0; font-size:1rem; font-weight:600; color: var(--ts-tinta); }
+.ts-operador .ts-tecnico { margin:0; }
+.ts-operador .ts-texto { margin:0; color: var(--ts-suave); font-size:.88rem; line-height:1.45; }
+.ts-exemplo-mut { background: var(--ts-relevo); border-radius:10px; padding:.55rem .65rem; display:flex; flex-direction:column; gap:.25rem; }
+.ts-exemplo-mut small { color: var(--ts-suave); font-size:.76rem; }
+.ts-exemplo-mut code { font-size:.8rem; background:none; padding:0; color: var(--ts-tinta); overflow-wrap:anywhere; }
+.ts-seta { color: var(--ts-destaque); font-weight:700; font-size:.85rem; }
+.ts-suites { display:flex; flex-direction:column; gap:.5rem; margin:.4rem 0 .6rem; }
+.ts-suite { display:grid; grid-template-columns: minmax(0,1.3fr) minmax(0,2fr) 8.5rem; gap:1rem; align-items:center;
+  background: var(--ts-cartao); border:1px solid var(--ts-linha); border-radius:12px; padding:.6rem .9rem; }
+.ts-suite-escolhida { border-color: var(--ts-destaque); box-shadow: inset 4px 0 0 var(--ts-destaque); }
+.ts-suite-nome, .ts-suite-num { display:flex; flex-direction:column; gap:.1rem; min-width:0; }
+.ts-suite-nome b, .ts-suite-num b { color: var(--ts-tinta); font-size:.95rem; }
+.ts-suite small { color: var(--ts-suave); font-size:.8rem; }
+.ts-suite-num { text-align:right; align-items:flex-end; }
+.ts-barra { height:12px; border-radius:999px; background: var(--ts-relevo); overflow:hidden; }
+.ts-barra span { display:block; height:100%; border-radius:999px; }
+.ts-barra-ok span { background: var(--ts-ok); } .ts-barra-alerta span { background: var(--ts-alerta); }
+.ts-barra-ruim span { background: var(--ts-ruim); }
+@media (max-width: 1100px) { .ts-operadores { grid-template-columns: repeat(2, minmax(0,1fr)); } }
+@media (max-width: 760px) { .ts-operadores { grid-template-columns: 1fr; }
+  .ts-suite { grid-template-columns: 1fr; gap:.4rem; } .ts-suite-num { text-align:left; align-items:flex-start; } }
 
 /* ---- fluxos do caso de uso ---- */
 .ts-fluxos { display:grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: .9rem; margin: .4rem 0 1rem; }
@@ -579,6 +662,57 @@ ESTILO_CSS = """
 """
 
 ICONES = {"ok": "✓", "ruim": "✕", "alerta": "!", "neutro": "–"}
+
+# Cor de destaque escolhida na barra lateral: (modo claro, modo escuro, fundo suave claro, fundo suave escuro).
+CORES = {
+    "Azul (padrão)": ("#1a56b8", "#78b0f5", "#e1eafa", "#15283f"),
+    "Verde-petróleo": ("#0f766e", "#4fd1c5", "#dcf2ef", "#0e2e2b"),
+    "Roxo": ("#6d28d9", "#b39dfa", "#ede6fc", "#241a3d"),
+    "Laranja": ("#c2410c", "#fb9a5c", "#fdeadf", "#3a1d0e"),
+    "Vinho": ("#9f1239", "#f58aa6", "#fbe4ea", "#3a1220"),
+    "Grafite": ("#334155", "#cbd5e1", "#e6eaf0", "#1f2833"),
+}
+COR_PERSONALIZADA = "Personalizada"
+
+
+def _mistura(cor_a: str, cor_b: str, t: float) -> str:
+    """Mistura duas cores hex: t=0 devolve a primeira, t=1 a segunda."""
+    a = [int(cor_a[i:i + 2], 16) for i in (1, 3, 5)]
+    b = [int(cor_b[i:i + 2], 16) for i in (1, 3, 5)]
+    return "#" + "".join(f"{round(x + (y - x) * t):02x}" for x, y in zip(a, b))
+
+
+def _luminancia(cor: str) -> float:
+    r, g, b = (int(cor[i:i + 2], 16) / 255 for i in (1, 3, 5))
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b
+
+
+def paleta(nome: str, personalizada: str = "#1a56b8"):
+    """As quatro cores de destaque. A personalizada e ajustada para ter contraste nos dois modos."""
+    if nome in CORES:
+        return CORES[nome]
+    base = personalizada if len(personalizada) == 7 else "#1a56b8"
+    claro = base
+    while _luminancia(claro) > 0.42:                 # texto colorido precisa ler bem sobre fundo branco
+        claro = _mistura(claro, "#000000", 0.15)
+    escuro = base
+    while _luminancia(escuro) < 0.5:                 # e sobre o fundo escuro
+        escuro = _mistura(escuro, "#ffffff", 0.15)
+    return claro, escuro, _mistura(claro, "#ffffff", 0.88), _mistura(claro, "#0c131b", 0.8)
+
+
+def css_da_cor(cores) -> str:
+    claro, escuro, suave_claro, suave_escuro = cores
+    return (f".stApp, .ts-relatorio {{ --ts-destaque: light-dark({claro}, {escuro}); "
+            f"--ts-destaque-suave: light-dark({suave_claro}, {suave_escuro}); }}")
+
+
+def marca(cor: str) -> str:
+    svg = _MARCA_SVG.replace('stroke="#4a86e8"', f'stroke="{cor}"')
+    return '<img class="ts-logo" alt="" src="data:image/svg+xml;base64,' + base64.b64encode(svg.encode()).decode() + '">'
+
+
+CSS_COR_ATUAL = css_da_cor(CORES["Azul (padrão)"])
 # Marca do produto: uma lupa sobre a linha de fronteira (o centro do teste de valor limite).
 _MARCA_SVG = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" fill="none" stroke="#4a86e8">'
               '<rect x="1.5" y="1.5" width="45" height="45" rx="12" stroke-width="3"/>'
@@ -782,7 +916,9 @@ def html_estacoes(d) -> str:
          "testes dão o alarme.",
          f"{mut['Md']} de {mut['Mt'] - mut['Me']}", "defeitos plantados foram percebidos",
          (ms or 0) / 100,
-         f"Escore de mutação: {texto_ms(mut)}." + (f" {mut['Me']} equivalentes descontados." if mut["Me"] else ""),
+         f"Escore de mutação: {texto_ms(mut)}." + (f" {mut['Me']} equivalentes descontados." if mut["Me"] else "")
+         + "".join(f" Só com o caminho feliz, {l['Md']} de {l['Mt'] - l['Me']} seriam percebidos."
+                   for l in d.get("comparacao_suites", []) if l["nome"] == "Somente caminho feliz" and l["casos"]),
          chip("Testes atentos", "ok") if ms is not None and ms >= 100 else
          (chip("Bons, com lacunas", "alerta") if ms is not None and ms >= 80 else chip("Testes fracos", "ruim"))),
     ]
@@ -1022,6 +1158,30 @@ def html_epsilon(spec) -> str:
     return '<div class="ts-contas">' + "".join(quadros) + "</div>"
 
 
+def html_parecer_profissional(dados, titulo: str = "") -> str:
+    assinatura_txt = " · ".join(x for x in (dados["nome"] or "Profissional não identificado", dados["funcao"],
+                                            dados["quando"]) if x)
+    paragrafos = "".join(f"<p>{esc(par)}</p>" for par in dados["texto"].split("\n") if par.strip())
+    return (f'<article class="ts-cartao ts-parecer-prof"><div class="ts-parecer-topo">'
+            f'<span class="ts-passo">{esc(titulo or "Parecer do profissional técnico")}</span>'
+            f'{chip(dados["veredito"], TIPO_DO_VEREDITO.get(dados["veredito"], "neutro"))}</div>'
+            f'{paragrafos}<p class="ts-assina">{esc(assinatura_txt)}</p></article>')
+
+
+def html_pareceres_do_laudo(d) -> str:
+    """Na parte do laudo para leigos: o parecer geral do profissional e o da IA, se existirem."""
+    partes = []
+    prof = d.get("pareceres_prof", {}).get("geral")
+    if prof:
+        partes.append(html_parecer_profissional(prof, "Parecer do profissional técnico"))
+    ia = d.get("pareceres", {}).get("geral")
+    if ia:
+        partes.append(f'<article class="ts-cartao"><span class="ts-passo">Parecer escrito com IA (Gemini)</span>'
+                      f'<pre class="parecer">{esc(ia["texto"])}</pre><p class="ts-assina">Modelo {esc(ia["modelo"])} · '
+                      f'{esc(ia["quando"])}</p></article>')
+    return "".join(partes)
+
+
 def html_matriz(casos, spec) -> str:
     """Matriz parametro x ponto: mostra de uma vez o que foi coberto e o resultado."""
     colunas = []
@@ -1158,10 +1318,15 @@ def gerar_relatorio_html(d) -> str:
     cob, crit = a["cobertura"], a["criterios"]
     v = d["suite"]
     pareceres = d.get("pareceres", {})
+    profissionais = d.get("pareceres_prof", {})
     parecer = ""
+    if profissionais:
+        nomes_p = {**{k: e["titulo"] for k, e in ETAPAS.items()}, "geral": "Parecer geral"}
+        parecer += ("<h2 class='anexo'>Pareceres do profissional técnico</h2>" + "".join(
+            html_parecer_profissional(profissionais[k], nomes_p[k]) for k in ["geral"] + list(ETAPAS) if k in profissionais))
     if pareceres:
         nomes = {**{k: e["titulo"] for k, e in ETAPAS.items()}, "geral": "Parecer geral"}
-        parecer = "<h2 class='anexo'>Pareceres escritos com o Gemini</h2><p class='nota'>Textos redigidos por IA a partir dos números deste laudo.</p>" + "".join(
+        parecer += "<h2 class='anexo'>Pareceres escritos com o Gemini</h2><p class='nota'>Textos redigidos por IA a partir dos números deste laudo.</p>" + "".join(
             f"<h3>{esc(nomes[k])}</h3><pre class='parecer'>{esc(pareceres[k]['texto'])}</pre>"
             f"<p class='nota'>Modelo {esc(pareceres[k]['modelo'])}, {esc(pareceres[k]['quando'])}.</p>"
             for k in ["geral"] + list(ETAPAS) if k in pareceres)
@@ -1181,6 +1346,7 @@ def gerar_relatorio_html(d) -> str:
 <style>
 {_fontes_embutidas()}
 {ESTILO_CSS}
+{CSS_COR_ATUAL}
 .ts-relatorio {{ color-scheme: light dark; }}
 html, body {{ margin:0; }}
 body.ts-relatorio {{ background: light-dark(#f6f8fb, #0c131b); color: var(--ts-tinta);
@@ -1201,13 +1367,28 @@ table.t td {{ white-space:nowrap; }} table.t td:last-child {{ white-space:normal
 .ts-gfc {{ text-align:center; margin:1rem 0; }} .ts-gfc svg {{ max-width:100%; height:auto; }}
 pre.parecer {{ white-space:pre-wrap; font-family:inherit; background: var(--ts-relevo); padding:1rem; border-radius:10px; }}
 .rodape {{ margin-top: 2.5rem; color: var(--ts-suave); font-size: .85rem; }}
+.ts-acoes {{ position: sticky; top: 0; z-index: 5; display:flex; justify-content:flex-end; gap:.6rem;
+  padding:.6rem 0; background: light-dark(#f6f8fbee, #0c131bee); }}
+.ts-acoes button {{ font: inherit; font-weight:600; cursor:pointer; border-radius:10px; padding:.5rem 1rem;
+  border:1px solid var(--ts-destaque); background: var(--ts-destaque); color: light-dark(#fff, #0c131b); }}
+@page {{ size: A4; margin: 14mm 12mm 16mm; }}
 @media print {{
-  .ts-relatorio {{ color-scheme: light; }}
-  .pagina {{ max-width:none; padding:0; }}
+  html, body {{ background:#ffffff !important; }}
+  .ts-relatorio {{ color-scheme: light; font-size: 10pt; }}
+  .ts-acoes {{ display:none !important; }}
+  .pagina {{ max-width: 100%; width: 100%; margin: 0 auto; padding: 0; box-sizing: border-box; }}
   h2.anexo {{ break-before: page; }}
-  .ts-estacao, .ts-regra, tr, .ts-cartao {{ break-inside: avoid; }}
+  h2, h3 {{ break-after: avoid; }}
+  .ts-estacao, .ts-regra, tr, .ts-cartao, .ts-operador, .ts-fluxo, .ts-suite, .kpi, svg {{ break-inside: avoid; }}
+  table.t {{ font-size: 7.6pt; }} table.t th, table.t td {{ white-space: normal !important; padding: .25rem .35rem; }}
+  .rolagem {{ overflow: visible !important; }}
+  .ts-estacoes, .ts-operadores {{ grid-template-columns: repeat(2, minmax(0,1fr)); }}
+  .ts-veredito {{ grid-template-columns: 1fr; }}
+  .ts-faixa {{ grid-template-columns: repeat(3, minmax(0,1fr)); }}
+  svg {{ max-width: 100% !important; height: auto; }}
 }}
 </style></head><body class="ts-relatorio"><div class="pagina">
+<div class="ts-acoes"><button type="button" onclick="window.print()">Salvar em PDF ou imprimir</button></div>
 {html_topo()}
 {html_faixa(d)}
 {html_veredito(d)}
@@ -1219,6 +1400,7 @@ pre.parecer {{ white-space:pre-wrap; font-family:inherit; background: var(--ts-r
 {html_exemplo(d)}
 {html_secao("Por que confiar nestes testes")}
 {html_confianca(d)}
+{(html_secao("Pareceres") + '<div class="ts-pareceres">' + html_pareceres_do_laudo(d) + "</div>") if html_pareceres_do_laudo(d) else ""}
 {html_secao("O que este laudo não cobre")}
 {html_limites()}
 {html_secao("Glossário", "Os termos técnicos usados nos anexos, em linguagem simples.")}
@@ -1265,6 +1447,10 @@ pre.parecer {{ white-space:pre-wrap; font-family:inherit; background: var(--ts-r
 <div class="kpis"><div class="kpi"><b>{mut['Mt']}</b><span>gerados (Mt)</span></div><div class="kpi"><b>{mut['Md']}</b><span>mortos (Md)</span></div>
 <div class="kpi"><b>{mut['vivos']}</b><span>vivos</span></div><div class="kpi"><b>{mut['Me']}</b><span>equivalentes (Me)</span></div><div class="kpi"><b>{texto_ms(mut)}</b><span>escore (MS)</span></div></div>
 <p>MS = Md ÷ (Mt − Me) × 100 = {mut['Md']} ÷ ({mut['Mt']} − {mut['Me']}) × 100 = <b>{texto_ms(mut)}</b></p>
+<h3>Os operadores de mutação</h3>{html_operadores(a)}
+<h3>Comparação entre suítes de teste</h3>{html_comparacao_suites(d['comparacao_suites'], COMPLETA) if d['comparacao_suites'] else ""}
+<p>{esc(conclusao_das_suites(d['comparacao_suites'])) if d['comparacao_suites'] else ""}</p>
+<h3>Mutantes, por operador (suíte completa)</h3>
 {tabela(d['mutantes'])}
 
 <h2 class="anexo">Anexo E. Validação: requisitos, rastreabilidade e suíte de testes</h2>
@@ -1288,9 +1474,13 @@ em Python a lógica da função 4GL carregada (IF, WHILE, LET, RETURN, comparaç
 </div>
 <script src="https://cdn.jsdelivr.net/npm/@viz-js/viz@3.31.0/dist/viz-global.js"></script>
 <script>
+ function imprimirSePedido() {{
+   if (document.body.dataset.imprimir) {{ setTimeout(function () {{ window.print(); }}, 500); }}
+ }}
  if (window.Viz) {{ Viz.instance().then(function (viz) {{
    var alvo = document.getElementById("gfc"); alvo.innerHTML = ""; alvo.appendChild(viz.renderSVGElement({dot}));
- }}); }}
+   imprimirSePedido();
+ }}).catch(imprimirSePedido); }} else {{ imprimirSePedido(); }}
 </script>
 </body></html>"""
 
@@ -1392,6 +1582,12 @@ def secoes_para_o_gemini(fonte_funcao, d) -> dict:
     if SPEC.get("enunciado", "").strip():
         regras = f"Enunciado: {SPEC['enunciado'].strip()}\n" + regras
     vivos = d["mutantes"][d["mutantes"]["Estado"] == "Vivo"]
+    suites_txt = "\n".join(f"- {l['nome']}: {l['casos']} casos, {l['Md']} de {l['Mt'] - l['Me']} mortos, MS = {texto_ms(l)}"
+                           for l in d.get("comparacao_suites", [])) or "- (não calculado)"
+    por_operador = "\n".join(
+        f"- {o} ({motor.NOMES_DOS_OPERADORES[o][1]}): {sum(1 for m in d['analise']['mutantes'] if m['operador'] == o)} gerados, "
+        f"{sum(1 for m in d['analise']['mutantes'] if m['operador'] == o and m['matam'])} mortos"
+        for o in ORDEM_OPERADORES)
     por_fluxo = "\n".join(f"- {f}: {', '.join(c['id'] for c in d['casos_lista'] if fluxo_do_caso(c) == f) or 'nenhum'}"
                           for f in FLUXOS)
     return {
@@ -1432,6 +1628,11 @@ pares_def_uso_csv:
 
 <mutacao>
 Mt = {mut['Mt']} | Md = {mut['Md']} | Me = {mut['Me']} | MS = {texto_ms(mut)}
+por operador:
+{por_operador}
+mesmos mutantes contra suítes diferentes:
+{suites_txt}
+{conclusao_das_suites(d['comparacao_suites']) if d.get('comparacao_suites') else ''}
 mutantes_vivos_csv:
 {vivos.to_csv(index=False) if len(vivos) else 'nenhum'}
 </mutacao>""",
@@ -1470,8 +1671,9 @@ ETAPAS = {
     "s3": {"titulo": "Sprint 3: fluxo de dados e mutação", "curto": "fluxo de dados e mutação",
            "secoes": ["funcao", "fluxo_mutacao"],
            "pede": "1. Critérios de fluxo de dados atendidos e pares Def-Uso não exercitados.\n"
-                   "2. Escore de mutação, mutantes vivos e quais parecem equivalentes.\n"
-                   "3. O que isso diz sobre a força da suíte.\n"
+                   "2. Escore de mutação por operador (AOR, ROR, COR, LVR), mutantes vivos e quais parecem equivalentes.\n"
+                   "3. A comparação entre suítes (completa, só PCE, só AVL, só caminho feliz): o que cada técnica "
+                   "acrescenta e o que diz sobre a força da suíte.\n"
                    "4. Recomendações."},
     "s4": {"titulo": "Sprint 4: validação", "curto": "validação",
            "secoes": ["especificacao", "validacao", "casos"],
@@ -1510,6 +1712,10 @@ def montar_prompt_geral(fonte_funcao, d, pareceres: dict) -> str:
     secoes = secoes_para_o_gemini(fonte_funcao, d)
     anteriores = "\n\n".join(f"<parecer_da_etapa nome=\"{ETAPAS[k]['titulo']}\">\n{t}\n</parecer_da_etapa>"
                              for k, t in pareceres.items()) or "(nenhum parecer de etapa foi gerado ainda)"
+    humanos = "\n\n".join(f"<parecer_do_profissional etapa=\"{k}\" veredito=\"{v['veredito']}\">\n{v['texto']}\n"
+                           "</parecer_do_profissional>" for k, v in d.get("pareceres_prof", {}).items())
+    if humanos:
+        anteriores += "\n\n" + humanos
     return f"""Você é um auditor de teste de software. Escreva o PARECER GERAL da análise da função
 {FUNCAO_ALVO} (arquivo {d['arquivo']}), juntando as quatro etapas: caixa-preta, caixa-branca,
 fluxo de dados e mutação, e validação. Tamanho: entre 400 e 650 palavras.
@@ -1526,7 +1732,7 @@ Um parágrafo curto por etapa.
 
 {REGRAS_DO_TEXTO}
 - Os pareceres de etapa abaixo (se houver) foram escritos antes; use-os como apoio, mas confira
-  sempre com os números.
+  sempre com os números. Se houver parecer do profissional técnico, diga se você concorda e por quê.
 
 {chr(10).join(secoes[s] for s in ["especificacao", "funcao", "caixa_preta", "caixa_branca", "fluxo_mutacao", "validacao", "achado", "referencias"])}
 
@@ -1624,35 +1830,6 @@ def tabela_pares(a) -> pd.DataFrame:
     return pd.DataFrame(linhas)
 
 
-def tabela_mutantes(a) -> pd.DataFrame:
-    linhas = []
-    for m in a["mutantes"]:
-        if m["estado"] == "Morto":
-            analise = ""
-        elif m["provavel_equivalente"]:
-            analise = f"Provável equivalente: nenhuma das {a['sondagens']} entradas de sondagem distingue"
-        else:
-            analise = f"Mata com {texto_entrada(m['sugestao'])}"
-        linhas.append({"Mutante": m["id"], "Operador": m["operador"], "Linha": m["linha"],
-                       "Original": m["original"], "Alterado": m["mutado"], "Estado": m["estado"],
-                       "Morto por": m["morto_por"], "Análise do mutante vivo": analise})
-    return pd.DataFrame(linhas)
-
-
-def resumo_mutacao(a, equivalentes=()) -> dict:
-    """Mt, Md, Me e o escore MS = Md / (Mt - Me). 'equivalentes' sao os ids
-    dos mutantes vivos que o analista marcou como equivalentes."""
-    total = len(a["mutantes"])
-    mortos = sum(1 for m in a["mutantes"] if m["estado"] == "Morto")
-    me = sum(1 for m in a["mutantes"] if m["estado"] == "Vivo" and m["id"] in equivalentes)
-    return {"Mt": total, "Md": mortos, "Me": me, "vivos": total - mortos,
-            "MS": motor.escore_de_mutacao(mortos, total, me)}
-
-
-def texto_ms(resumo) -> str:
-    return "sem mutantes" if resumo["MS"] is None else f"{resumo['MS']:.1f}%".replace(".", ",")
-
-
 def painel_caixa_branca(a, chave: str) -> None:
     """Sprint 2: grafo, contagens, McCabe pelos tres metodos e cobertura."""
     m, grafo = a["metricas"], a["grafo"]
@@ -1742,58 +1919,237 @@ def painel_fluxo(a, chave: str) -> None:
             f"{v} (nó {no})" for v, no in a["definicao_sem_uso"]) + ".", icon=":material/info:")
 
 
-def painel_mutacao(a, chave: str) -> dict:
-    """Sprint 3, parte 2: mutantes, estados e escore de mutacao. Devolve o resumo."""
-    topo = st.container()
-    tabela = tabela_mutantes(a)
-    if tabela.empty:
-        st.info("Esta função não tem operador, comparação ou variável para mutar.", icon=":material/info:")
-        return resumo_mutacao(a)
-    st.markdown("**Mutantes gerados**")
-    tabela.insert(6, "Equivalente", False)
-    editado = st.data_editor(
-        tabela, key=f"{chave}_mutantes", hide_index=True, width="stretch",
-        disabled=[c for c in tabela.columns if c != "Equivalente"],
-        column_config={"Equivalente": st.column_config.CheckboxColumn(
-            "Equivalente", help="Marque o mutante vivo que você analisou e concluiu que se comporta "
-                                "igual ao original para qualquer entrada.")})
-    st.caption("Morto: algum caso deu resultado diferente do programa original. Vivo: todos os casos deram "
-               "o mesmo resultado. Decidir se um mutante vivo é equivalente é tarefa do analista; "
-               "a marcação só conta para mutantes vivos.")
-    marcados = set(editado.loc[editado["Equivalente"], "Mutante"])
-    r = resumo_mutacao(a, marcados)
+ORDEM_OPERADORES = ["AOR", "ROR", "COR", "LVR"]
+COMPLETA = "Completa (PCE + AVL + extras)"
+DESCRICAO_DAS_SUITES = {
+    COMPLETA: "Todos os casos: as classes de equivalência, os pontos de fronteira e os testes extras.",
+    "Somente PCE": "Um caso por classe de equivalência: um valor comum válido (Interior), um bem fora da "
+                   "faixa (Exterior) e o campo em branco. Sem os pontos exatos da fronteira.",
+    "Somente AVL": "Só os pontos exatos da fronteira: On-Point (no limite) e Off-Point (um ε além).",
+    "Somente caminho feliz": "Só os casos do fluxo principal: valores comuns, em que tudo dá certo.",
+    "Somente testes extras": "Só os casos digitados na aba Testes extras da Sprint 1.",
+    "Personalizada": "Você escolhe os casos.",
+}
 
-    with topo:
-        k = st.columns(5)
-        k[0].metric("Gerados (Mt)", r["Mt"], border=True)
-        k[1].metric("Mortos (Md)", r["Md"], border=True)
-        k[2].metric("Vivos", r["vivos"], border=True)
-        k[3].metric("Equivalentes (Me)", r["Me"], border=True)
-        k[4].metric("Escore (MS)", texto_ms(r), border=True)
-        st.markdown(f"MS = Md ÷ (Mt − Me) × 100 = {r['Md']} ÷ ({r['Mt']} − {r['Me']}) × 100 = **{texto_ms(r)}**")
-        vivos = [m for m in a["mutantes"] if m["estado"] == "Vivo"]
-        provaveis = [m for m in vivos if m["provavel_equivalente"]]
-        mataveis = [m for m in vivos if not m["provavel_equivalente"]]
-        if not vivos:
-            st.success("A suíte matou todos os mutantes.", icon=":material/check_circle:")
+
+def suites_de_teste(casos) -> dict:
+    """Sub-suites prontas, como listas de ids de casos."""
+    base = [c for c in casos if c["tecnica"] != "Extra"]
+    suites = {
+        COMPLETA: [c["id"] for c in casos],
+        "Somente PCE": [c["id"] for c in base if c["rotulo"] in ("Interior", "Nulo") or c["rotulo"].startswith("Exterior")],
+        "Somente AVL": [c["id"] for c in base if c["rotulo"].startswith(("On-Point", "Off-Point"))],
+        "Somente caminho feliz": [c["id"] for c in casos if fluxo_do_caso(c) == "Fluxo principal"],
+    }
+    extras = [c["id"] for c in casos if c["tecnica"] == "Extra"]
+    if extras:
+        suites["Somente testes extras"] = extras
+    return suites
+
+
+def _numero_do_mutante(m) -> int:
+    return int(m["id"][1:]) if m["id"][1:].isdigit() else 0
+
+
+def mutantes_em_ordem(a):
+    return sorted(a["mutantes"], key=lambda m: (ORDEM_OPERADORES.index(m["operador"])
+                                                if m["operador"] in ORDEM_OPERADORES else 9,
+                                                m["linha"], _numero_do_mutante(m)))
+
+
+def resumo_mutacao(a, equivalentes=(), suite=None) -> dict:
+    """Mt, Md, Me e o escore MS = Md / (Mt - Me) para uma suite (todos os casos, se None).
+    'equivalentes' sao os ids dos mutantes vivos que o analista marcou como equivalentes."""
+    escolhidos = None if suite is None else set(suite)
+    mortos = sorted((m["id"] for m in a["mutantes"]
+                     if (m["matam"] if escolhidos is None else set(m["matam"]) & escolhidos)),
+                    key=lambda i: int(i[1:]) if i[1:].isdigit() else 0)
+    total = len(a["mutantes"])
+    me = sum(1 for m in a["mutantes"] if m["id"] not in mortos and m["id"] in equivalentes)
+    return {"Mt": total, "Md": len(mortos), "Me": me, "vivos": total - len(mortos),
+            "MS": motor.escore_de_mutacao(len(mortos), total, me), "mortos_ids": mortos,
+            "equivalentes": sorted(e for e in equivalentes if e not in mortos)}
+
+
+def texto_ms(resumo) -> str:
+    return "sem mutantes" if resumo["MS"] is None else f"{resumo['MS']:.1f}%".replace(".", ",")
+
+
+def tabela_mutantes(a, suite=None, equivalentes=()) -> pd.DataFrame:
+    """Um mutante por linha, em ordem de operador, linha do fonte e numero."""
+    escolhidos = None if suite is None else list(suite)
+    linhas = []
+    for m in mutantes_em_ordem(a):
+        matam = m["matam"] if escolhidos is None else [c for c in escolhidos if c in m["matam"]]
+        if matam:
+            estado, analise = "Morto", ""
+        elif m["id"] in equivalentes:
+            estado, analise = "Equivalente", "Marcado pelo analista: se comporta igual ao original"
+        else:
+            estado = "Vivo"
+            if m["matam"]:
+                analise = f"A suíte completa mata com {', '.join(m['matam'][:3])}{'…' if len(m['matam']) > 3 else ''}"
+            elif m["provavel_equivalente"]:
+                analise = f"Provável equivalente: nenhuma das {a['sondagens']} entradas de sondagem distingue"
+            else:
+                analise = f"Mataria com a entrada {texto_entrada(m['sugestao'])}"
+        sigla = m["operador"]
+        linhas.append({"Mutante": m["id"], "Operador": f"{sigla} · {motor.NOMES_DOS_OPERADORES[sigla][1].lower()}",
+                       "Linha": m["linha"], "Original": m["original"], "Mutante (alterado)": m["mutado"],
+                       "Estado": estado, "Morto pelo caso": matam[0] if matam else "—",
+                       "Casos que matam": f"{len(matam)} de {len(escolhidos) if escolhidos is not None else len(m['matam']) or 0}"
+                       if escolhidos is not None else len(m["matam"]),
+                       "Análise": analise})
+    return pd.DataFrame(linhas)
+
+
+def html_operadores(a) -> str:
+    """Um quadro por operador: o que ele troca, um exemplo nesta funcao e quantos foram mortos."""
+    quadros = []
+    for sigla in ORDEM_OPERADORES:
+        do_op = [m for m in mutantes_em_ordem(a) if m["operador"] == sigla]
+        ingles, nome = motor.NOMES_DOS_OPERADORES[sigla]
+        if do_op:
+            mortos = sum(1 for m in do_op if m["matam"])
+            ex = do_op[0]
+            exemplo = (f'<code>{esc(ex["original"])}</code><span class="ts-seta">→</span>'
+                       f'<code>{esc(ex["mutado"])}</code>')
+            medida = (f'<div class="ts-medida"><b>{mortos} de {len(do_op)}</b><span>mortos pela suíte completa</span></div>'
+                      f'{_medidor(mortos / len(do_op))}')
+        else:
+            exemplo = '<span class="ts-detalhe">Nada nesta função para este operador trocar.</span>'
+            medida = '<div class="ts-medida"><b>0</b><span>mutantes</span></div>'
+        quadros.append(f'<article class="ts-operador"><p class="ts-sigla">{sigla}</p><h3>{esc(nome)}</h3>'
+                       f'<p class="ts-tecnico">{esc(ingles)}</p><p class="ts-texto">{esc(motor.OPERADORES[sigla].split(": ", 1)[1])}</p>'
+                       f'<div class="ts-exemplo-mut"><small>Exemplo nesta função</small>{exemplo}</div>{medida}</article>')
+    return '<div class="ts-operadores">' + "".join(quadros) + "</div>"
+
+
+def comparar_suites(a, suites, equivalentes=()):
+    """Escore de cada suite contra os mesmos mutantes: [{nome, casos, Md, Mt, Me, MS}]."""
+    linhas = []
+    for nome, ids in suites.items():
+        r = resumo_mutacao(a, equivalentes, ids)
+        linhas.append({"nome": nome, "casos": len(ids), **{k: r[k] for k in ("Mt", "Md", "Me", "MS", "vivos")},
+                       "mortos_ids": r["mortos_ids"]})
+    return linhas
+
+
+def html_comparacao_suites(linhas, escolhida: str) -> str:
+    partes = []
+    for l in linhas:
+        ms = l["MS"] or 0
+        classe = "ok" if ms >= 100 else ("alerta" if ms >= 80 else "ruim")
+        partes.append(f'<div class="ts-suite{" ts-suite-escolhida" if l["nome"] == escolhida else ""}">'
+                      f'<div class="ts-suite-nome"><b>{esc(l["nome"])}</b><small>{l["casos"]} caso{"s" if l["casos"] != 1 else ""}</small></div>'
+                      f'<div class="ts-barra ts-barra-{classe}"><span style="width:{max(0, min(100, ms)):.0f}%"></span></div>'
+                      f'<div class="ts-suite-num"><b>{texto_ms(l) if l["casos"] else "—"}</b>'
+                      f'<small>{l["Md"]} de {l["Mt"] - l["Me"]} mortos</small></div></div>')
+    return '<div class="ts-suites">' + "".join(partes) + "</div>"
+
+
+def conclusao_das_suites(linhas) -> str:
+    """Uma frase simples: o que se perde testando so uma parte."""
+    completa = next(l for l in linhas if l["nome"] == COMPLETA)
+    frases = []
+    for l in linhas:
+        if l["nome"] == COMPLETA or not l["casos"]:
+            continue
+        perdidos = completa["Md"] - l["Md"]
+        if perdidos > 0:
+            frases.append(f"a suíte “{l['nome']}” ({l['casos']} casos) deixaria passar {perdidos} dos "
+                          f"{completa['Md']} defeitos que a completa percebe")
+    if not frases:
+        return "Qualquer uma das suítes percebe os mesmos defeitos plantados que a suíte completa."
+    return "Comparando com a suíte completa: " + "; ".join(frases) + "."
+
+
+def painel_mutacao(a, chave: str, casos):
+    """Sprint 3, parte 2: operadores, suites contra os mutantes e a tabela de mutantes.
+    Devolve (resumo da suite completa, comparacao entre suites)."""
+    if not a["mutantes"]:
+        st.info("Esta função não tem operador, comparação ou variável para mutar.", icon=":material/info:")
+        r = resumo_mutacao(a)
+        return r, []
+    suites = suites_de_teste(casos)
+    vivos_na_completa = [m for m in mutantes_em_ordem(a) if not m["matam"]]
+
+    st.subheader("Os operadores de mutação")
+    st.html(html_operadores(a))
+    st.caption("Cada mutante é uma cópia da função com uma única troca. Os estados possíveis: morto (algum teste "
+               "deu resultado diferente do original), vivo (todos os testes passaram) e equivalente (a troca não "
+               "muda o comportamento; nenhum teste consegue matá-lo).")
+
+    st.subheader("Qual suíte enfrenta os mutantes")
+    opcoes = list(suites) + ["Personalizada"]
+    escolha = st.segmented_control("Suíte de testes", opcoes, default=COMPLETA, key=f"{chave}_suite",
+                                   label_visibility="collapsed") or COMPLETA
+    if escolha == "Personalizada":
+        por_id = {c["id"]: c for c in casos}
+        ids = st.multiselect("Casos da suíte personalizada", list(por_id), default=suites["Somente AVL"],
+                             key=f"{chave}_personalizada",
+                             format_func=lambda i: f"{i} · {por_id[i]['rotulo']} · {por_id[i]['alvo']}")
+    else:
+        ids = suites[escolha]
+    st.caption(DESCRICAO_DAS_SUITES.get(escolha, "") + (f" Casos: {', '.join(ids)}." if ids else " Nenhum caso."))
+    equivalentes = st.multiselect(
+        "Mutantes vivos que você analisou e concluiu que são equivalentes", [m["id"] for m in vivos_na_completa],
+        key=f"{chave}_equivalentes",
+        format_func=lambda i: f"{i} · {next(m['mutado'] for m in a['mutantes'] if m['id'] == i)}",
+        help="Um mutante equivalente se comporta igual ao original para qualquer entrada. Ele sai da conta do "
+             "escore: MS = Md ÷ (Mt − Me).") if vivos_na_completa else []
+    r = resumo_mutacao(a, equivalentes, ids)
+    k = st.columns(6)
+    k[0].metric("Casos na suíte", len(ids), border=True)
+    k[1].metric("Gerados (Mt)", r["Mt"], border=True)
+    k[2].metric("Mortos (Md)", r["Md"], border=True)
+    k[3].metric("Vivos", r["vivos"] - r["Me"], border=True)
+    k[4].metric("Equivalentes (Me)", r["Me"], border=True)
+    k[5].metric("Escore (MS)", texto_ms(r), border=True)
+    st.markdown(f"MS = Md ÷ (Mt − Me) × 100 = {r['Md']} ÷ ({r['Mt']} − {r['Me']}) × 100 = **{texto_ms(r)}**")
+    vivos = [m for m in a["mutantes"] if m["id"] not in r["mortos_ids"] and m["id"] not in equivalentes]
+    if not ids:
+        st.warning("A suíte escolhida não tem casos.", icon=":material/rule:")
+    elif not vivos:
+        st.success("Esta suíte matou todos os mutantes (descontados os equivalentes).", icon=":material/check_circle:")
+    else:
+        mataveis = [m for m in vivos if m["matam"] or not m["provavel_equivalente"]]
+        provaveis = [m for m in vivos if not m["matam"] and m["provavel_equivalente"]]
         if mataveis:
-            st.warning(f"{len(mataveis)} mutante(s) vivo(s) podem ser mortos com um caso novo: "
-                       f"{', '.join(m['id'] for m in mataveis)}. A tabela indica uma entrada para cada um.",
+            st.warning(f"{len(mataveis)} mutante(s) sobrevivem a esta suíte, mas poderiam ser mortos: "
+                       f"{', '.join(m['id'] for m in mataveis)}. A coluna Análise da tabela diz como.",
                        icon=":material/science:")
         if provaveis:
-            st.info(f"{len(provaveis)} mutante(s) vivo(s) parecem equivalentes: "
-                    f"{', '.join(m['id'] for m in provaveis)}. Se a análise confirmar, marque a coluna "
-                    "Equivalente e o escore é recalculado.", icon=":material/balance:")
-        por_operador = []
-        for operador, descricao in motor.OPERADORES.items():
-            do_operador = [m for m in a["mutantes"] if m["operador"] == operador]
-            if do_operador:
-                mortos = sum(1 for m in do_operador if m["estado"] == "Morto")
-                por_operador.append({"Operador": operador, "O que faz": descricao,
-                                     "Gerados": len(do_operador), "Mortos": mortos,
-                                     "Vivos": len(do_operador) - mortos})
-        st.dataframe(pd.DataFrame(por_operador), hide_index=True, width="stretch")
-    return r
+            st.info(f"{len(provaveis)} mutante(s) vivo(s) parecem equivalentes: {', '.join(m['id'] for m in provaveis)}. "
+                    "Se a sua análise confirmar, marque-os no campo acima e o escore é recalculado.",
+                    icon=":material/balance:")
+
+    st.subheader("Comparação entre suítes")
+    comparacao = comparar_suites(a, {**suites, **({"Personalizada": ids} if escolha == "Personalizada" else {})},
+                                 equivalentes)
+    st.html(html_comparacao_suites(comparacao, escolha))
+    st.caption(conclusao_das_suites(comparacao))
+
+    st.subheader("Mutantes, por operador")
+    tabela = tabela_mutantes(a, ids, equivalentes)
+    f1, f2 = st.columns([2, 1.3])
+    presentes = [o for o in ORDEM_OPERADORES if any(m["operador"] == o for m in a["mutantes"])]
+    filtro_op = f1.multiselect("Operadores", presentes, default=presentes, key=f"{chave}_filtro_op",
+                               format_func=lambda o: f"{o} · {motor.NOMES_DOS_OPERADORES[o][1]}")
+    filtro_estado = f2.segmented_control("Estado", ["Todos", "Mortos", "Vivos"], default="Todos",
+                                         key=f"{chave}_filtro_estado") or "Todos"
+    visivel = tabela[tabela["Operador"].str[:3].isin(filtro_op)]
+    if filtro_estado == "Mortos":
+        visivel = visivel[visivel["Estado"] == "Morto"]
+    elif filtro_estado == "Vivos":
+        visivel = visivel[visivel["Estado"] != "Morto"]
+    st.dataframe(visivel, hide_index=True, width="stretch", height="content",
+                 column_config={"Original": st.column_config.TextColumn(width="medium"),
+                                "Mutante (alterado)": st.column_config.TextColumn(width="medium"),
+                                "Análise": st.column_config.TextColumn(width="large")})
+    st.caption(f"{len(visivel)} de {len(tabela)} mutantes. Ordem: operador (AOR, ROR, COR, LVR), linha do fonte e "
+               "número. 'Morto pelo caso' é o primeiro caso da suíte que deu resultado diferente do original.")
+    return resumo_mutacao(a, equivalentes), comparacao
 
 
 def achado_central(q, a, mut) -> str:
@@ -2143,7 +2499,24 @@ GRANULARIDADES = ["Blocos indivisíveis (definição formal)", "Um nó por coman
 # ==========================================================================
 st.set_page_config(page_title="TestingStudio, laudo de qualidade", layout="wide",
                    initial_sidebar_state="collapsed")
-st.html(f"<style>{ESTILO_CSS}</style>")
+def guardar_cor() -> None:
+    """Lembra a cor no endereco da pagina, para ela continuar depois de recarregar."""
+    st.query_params["cor"] = st.session_state.get("cor_destaque", "")
+    if st.session_state.get("cor_destaque") == COR_PERSONALIZADA:
+        st.query_params["hex"] = st.session_state.get("cor_personalizada", "#1a56b8").lstrip("#")
+    else:
+        st.query_params.pop("hex", None)
+
+
+if "cor_destaque" not in st.session_state:
+    pedida = st.query_params.get("cor", "")
+    st.session_state["cor_destaque"] = pedida if pedida in CORES or pedida == COR_PERSONALIZADA else "Azul (padrão)"
+if "cor_personalizada" not in st.session_state:
+    st.session_state["cor_personalizada"] = "#" + st.query_params.get("hex", "1a56b8")[:6]
+CORES_ATUAIS = paleta(st.session_state["cor_destaque"], st.session_state["cor_personalizada"])
+CSS_COR_ATUAL = css_da_cor(CORES_ATUAIS)
+MARCA = marca(_mistura(CORES_ATUAIS[0], CORES_ATUAIS[1], 0.45))
+st.html(f"<style>{ESTILO_CSS}\n{CSS_COR_ATUAL}</style>")
 st.html(html_topo())
 if ARQUIVOS_DESATUALIZADOS:
     st.error("O servidor está sem a versão atual de " + " e ".join(ARQUIVOS_DESATUALIZADOS) + ". Envie de novo "
@@ -2151,9 +2524,38 @@ if ARQUIVOS_DESATUALIZADOS:
              "Reboot app.", icon=":material/sync_problem:")
     st.stop()
 
+def aplicar_pareceres_pendentes() -> None:
+    """Pareceres carregados de um arquivo: entram antes de qualquer campo ser desenhado."""
+    dados = st.session_state.pop("pareceres_pendentes", None)
+    if not dados:
+        return
+    for k, v in dados.get("pareceres", {}).items():
+        if k in ("s1", "s2", "s3", "s4", "geral") and isinstance(v, dict):
+            st.session_state[f"prof::{k}::texto"] = str(v.get("texto", ""))
+            st.session_state[f"prof::{k}::veredito"] = v.get("veredito") if v.get("veredito") in VEREDITOS else VEREDITOS[0]
+            st.session_state[f"prof::{k}::quando"] = str(v.get("quando", ""))
+    if dados.get("nome"):
+        st.session_state["prof_nome"] = str(dados["nome"])
+    if dados.get("funcao_do_profissional"):
+        st.session_state["prof_funcao"] = str(dados["funcao_do_profissional"])
+
+
+aplicar_pareceres_pendentes()
+
 # ---- Barra lateral: chave do Gemini (so para os textos opcionais) ----------
 chave_servidor = chave_do_servidor()
 with st.sidebar:
+    st.header("Aparência")
+    st.selectbox("Cor de destaque", list(CORES) + [COR_PERSONALIZADA], key="cor_destaque", on_change=guardar_cor)
+    if st.session_state["cor_destaque"] == COR_PERSONALIZADA:
+        st.color_picker("Escolha a cor", key="cor_personalizada", on_change=guardar_cor)
+    st.caption("Modo claro ou escuro: menu de três pontos, no canto superior direito: System, Light ou Dark.")
+    st.divider()
+    st.header("Profissional técnico")
+    st.caption("Quem assina os pareceres técnicos (no fim de cada Sprint e na aba Parecer geral).")
+    st.text_input("Nome", key="prof_nome", placeholder="ex.: Maria Souza")
+    st.text_input("Função", key="prof_funcao", placeholder="ex.: Analista de testes")
+    st.divider()
     st.header("Textos com IA")
     st.caption("O Gemini escreve os pareceres do fim de cada Sprint e da aba Parecer geral, a partir dos resultados. O laudo funciona sem ele.")
     if chave_servidor:
@@ -2175,8 +2577,7 @@ with st.sidebar:
         st.success(situacao["mensagem"], icon=":material/check_circle:")
     else:
         st.error(situacao["mensagem"], icon=":material/error:")
-    st.divider()
-    st.caption("Modo claro ou escuro: menu de três pontos, no canto superior direito: System, Light ou Dark.")
+
 
 chave_ok = bool(api_key and situacao and situacao["chave"] == marca_da(api_key) and situacao["ok"])
 
@@ -2591,7 +2992,7 @@ with aba_s3:
             "O teste de mutação avalia os testes, não o código. Cada mutante é uma cópia da função com um "
             "pequeno defeito plantado de propósito; uma boa suíte percebe a diferença e mata o mutante.",
             "mutacao"))
-        mutacao = painel_mutacao(analise, "cad")
+        mutacao, comparacao_suites = painel_mutacao(analise, "cad", casos)
 
 # ======================= DADOS CONSOLIDADOS =================================
 rtm = rastreabilidade(casos)
@@ -2602,7 +3003,8 @@ pacote = {
     "origem": df_origem, "justificativa": justificativa,
     "analise": analise, "mutacao": mutacao, "achado": achado, "parametros": parametros,
     "nos": tabela_nos(analise), "execucoes": tabela_execucoes(analise), "caminhos": tabela_caminhos(analise),
-    "variaveis": tabela_variaveis(analise), "pares": tabela_pares(analise), "mutantes": tabela_mutantes(analise),
+    "variaveis": tabela_variaveis(analise), "pares": tabela_pares(analise), "mutantes": tabela_mutantes(analise, None, mutacao["equivalentes"]),
+    "comparacao_suites": comparacao_suites,
     "suite": suite, "criterios_suite": tabela_criterios_suite(suite), "asercoes": tabela_asercoes(casos),
     "reguas": lista_reguas, "rtm": rtm, "requisitos": tabela_requisitos(rtm),
     "derivados": tabela_casos_derivados(casos, rtm), "matriz_rtm": tabela_rtm(casos, rtm),
@@ -2612,15 +3014,43 @@ assinatura = hashlib.sha256((texto_funcao + df_casos.to_csv() + str(por_bloco) +
                              cp.especificacao_para_json(SPEC, FUNCAO_ALVO)).encode()).hexdigest()
 pacote["pareceres"] = {k: st.session_state[f"parecer::{k}"] for k in list(ETAPAS) + ["geral"]
                        if f"parecer::{k}" in st.session_state}
+pacote["pareceres_prof"] = pareceres_profissionais()
 relatorio_html = gerar_relatorio_html(pacote)
 
 
+def botao_pdf(chave: str) -> None:
+    """Abre o laudo numa aba nova, ja formatado para A4, e chama 'Salvar como PDF' do navegador."""
+    conteudo = relatorio_html.replace('<body class="ts-relatorio">', '<body class="ts-relatorio" data-imprimir="1">', 1)
+    claro, escuro = CORES_ATUAIS[0], CORES_ATUAIS[1]
+    st.iframe(f"""<!doctype html><html><head><meta charset="utf-8"><style>
+:root {{ color-scheme: light dark; }}
+body {{ margin:0; font-family: 'IBM Plex Sans', 'Segoe UI', system-ui, sans-serif; background: transparent; }}
+button {{ width:100%; height:40px; border-radius:8px; font: 600 14px 'IBM Plex Sans', 'Segoe UI', system-ui, sans-serif;
+  cursor:pointer; border:1px solid light-dark({claro}, {escuro}); background: transparent; color: light-dark({claro}, {escuro}); }}
+button:hover {{ background: light-dark({claro}, {escuro}); color: light-dark(#fff, #0c131b); }}
+p {{ margin:.3rem 0 0; font-size:12px; color: light-dark(#536175, #9badc1); }}
+</style></head><body>
+<button id="pdf" type="button">Exportar PDF</button><p id="aviso"></p>
+<script>
+const laudo = {json.dumps(conteudo).replace("</", "<\\/")};
+document.getElementById("pdf").addEventListener("click", function () {{
+  const url = URL.createObjectURL(new Blob([laudo], {{type: "text/html"}}));
+  const janela = window.open(url, "_blank");
+  if (!janela) {{
+    document.getElementById("aviso").textContent = "O navegador bloqueou a nova aba. Permita pop-ups para este site, ou baixe o laudo em HTML e use Ctrl+P.";
+  }}
+}});
+</script></body></html>""", height=64)
+
+
 def botoes_de_download(chave: str) -> None:
-    b1, b2, _ = st.columns([1.7, 1.5, 3])
+    b1, b2, b3, _ = st.columns([1.7, 1.5, 1.2, 1.6])
+    with b3:
+        botao_pdf(chave)
     b1.download_button("Baixar o laudo completo (HTML)", relatorio_html, key=f"laudo_{chave}",
                        file_name=f"laudo_{FUNCAO_ALVO}.html", mime="text/html", width="stretch",
                        icon=":material/download:", type="primary",
-                       help="Abre em qualquer navegador, no modo claro ou escuro. Para PDF, use Ctrl+P.")
+                       help="Abre em qualquer navegador, no modo claro ou escuro. Tem um botão para salvar em PDF.")
     b2.download_button("Baixar casos de teste (CSV)", df_casos.to_csv(index=False, sep=";").encode("utf-8-sig"),
                        key=f"csv_{chave}", file_name=f"casos_de_teste_{FUNCAO_ALVO}.csv", mime="text/csv",
                        width="stretch", icon=":material/table:")
@@ -2681,11 +3111,34 @@ def painel_gemini(chave: str, titulo: str, explicacao: str) -> None:
                        "calculados pela ferramenta.")
 
 
+def marcar_horario(chave: str) -> None:
+    st.session_state[f"prof::{chave}::quando"] = agora().strftime("%d/%m/%Y %H:%M")
+
+
+def painel_profissional(chave: str, titulo: str) -> None:
+    """Parecer escrito por uma pessoa: veredito, texto e assinatura (nome e funcao da barra lateral)."""
+    st.html(html_explica(titulo, "Espaço para o profissional técnico registrar a sua análise: o veredito e as "
+                                 "observações. A assinatura usa o nome e a função informados na barra lateral."))
+    st.selectbox("Veredito", VEREDITOS, key=f"prof::{chave}::veredito", on_change=marcar_horario, args=(chave,))
+    st.text_area("Parecer", key=f"prof::{chave}::texto", height=170, on_change=marcar_horario, args=(chave,),
+                 placeholder="Escreva aqui o que você concluiu, os riscos que vê e o que recomenda.")
+    dados = pareceres_profissionais().get(chave)
+    if dados:
+        st.html(html_parecer_profissional(dados, "Como vai aparecer no laudo"))
+        if not dados["nome"]:
+            st.caption("Informe nome e função na barra lateral para assinar o parecer.")
+
+
 def parecer_da_etapa(chave: str) -> None:
     st.divider()
-    painel_gemini(chave, f"Parecer da IA sobre a {ETAPAS[chave]['titulo']}",
-                  f"O Gemini lê os resultados desta etapa ({ETAPAS[chave]['curto']}) e escreve um parecer. "
-                  "Os números vêm sempre da ferramenta; a IA só redige.")
+    st.subheader(f"Pareceres sobre a {ETAPAS[chave]['titulo']}")
+    aba_humano, aba_ia = st.tabs(["Parecer do profissional técnico", "Parecer da IA (Gemini)"])
+    with aba_humano:
+        painel_profissional(chave, "Parecer do profissional técnico")
+    with aba_ia:
+        painel_gemini(chave, f"Parecer da IA sobre a {ETAPAS[chave]['titulo']}",
+                      f"O Gemini lê os resultados desta etapa ({ETAPAS[chave]['curto']}) e escreve um parecer. "
+                      "Os números vêm sempre da ferramenta; a IA só redige.")
 
 
 # ======================= SPRINT 4: VALIDACAO ================================
@@ -2754,21 +3207,51 @@ with aba_s3:
 # ======================= PARECER GERAL =======================================
 with aba_parecer:
     feitos = [ETAPAS[k]["titulo"] for k in ETAPAS if k in pacote["pareceres"]]
-    painel_gemini("geral", "Parecer geral da análise",
-                  "O Gemini junta as quatro etapas (caixa-preta, caixa-branca, fluxo de dados e mutação, validação) "
-                  "num parecer só, que começa com um resumo para quem não é da área. Se você já gerou pareceres "
-                  "nas etapas, eles entram como apoio" + (f" (prontos: {', '.join(feitos)})." if feitos else "."))
-    st.subheader("Pareceres das etapas")
-    for k, etapa in ETAPAS.items():
-        escrito = pacote["pareceres"].get(k)
-        with st.expander(etapa["titulo"] + ("" if escrito else " (ainda não gerado)"), expanded=False,
-                         icon=":material/check_circle:" if escrito else ":material/radio_button_unchecked:"):
-            if escrito:
-                st.markdown(titulos_menores(escrito["texto"]))
-                st.caption(f"Modelo {escrito['modelo']}, {escrito['quando']}.")
-            else:
-                st.caption(f"Gere este parecer no fim da aba {etapa['titulo']}.")
-    st.caption("Todos os pareceres gerados entram no laudo completo (HTML).")
+    aba_humano_geral, aba_ia_geral, aba_etapas = st.tabs(
+        ["Parecer do profissional técnico", "Parecer da IA (Gemini)", "Pareceres das etapas"])
+    with aba_humano_geral:
+        painel_profissional("geral", "Parecer geral do profissional técnico")
+    with aba_ia_geral:
+        painel_gemini("geral", "Parecer geral da análise",
+                      "O Gemini junta as quatro etapas (caixa-preta, caixa-branca, fluxo de dados e mutação, validação) "
+                      "num parecer só, que começa com um resumo para quem não é da área. Os pareceres das etapas e o "
+                      "do profissional técnico, se existirem, entram como apoio"
+                      + (f" (IA, prontos: {', '.join(feitos)})." if feitos else "."))
+    with aba_etapas:
+        for k, etapa in ETAPAS.items():
+            ia, humano = pacote["pareceres"].get(k), pacote["pareceres_prof"].get(k)
+            estado = " · ".join(x for x in ("profissional" if humano else "", "IA" if ia else "") if x) or "nenhum ainda"
+            with st.expander(f"{etapa['titulo']} ({estado})", expanded=False,
+                             icon=":material/check_circle:" if (ia or humano) else ":material/radio_button_unchecked:"):
+                if humano:
+                    st.html(html_parecer_profissional(humano))
+                if ia:
+                    st.markdown(titulos_menores(ia["texto"]))
+                    st.caption(f"IA: modelo {ia['modelo']}, {ia['quando']}.")
+                if not (ia or humano):
+                    st.caption(f"Escreva ou gere os pareceres no fim da aba {etapa['titulo']}.")
+        st.divider()
+        st.markdown("**Guardar os pareceres do profissional**")
+        st.caption("Os pareceres ficam só nesta visita. Salve-os num arquivo para continuar depois.")
+        st.download_button("Salvar os pareceres (.json)", json.dumps(
+            {"funcao": FUNCAO_ALVO, "nome": st.session_state.get("prof_nome", ""),
+             "funcao_do_profissional": st.session_state.get("prof_funcao", ""),
+             "pareceres": {k: {"veredito": v["veredito"], "texto": v["texto"], "quando": v["quando"]}
+                           for k, v in pacote["pareceres_prof"].items()}}, ensure_ascii=False, indent=2),
+            file_name=f"pareceres_{FUNCAO_ALVO}.json", mime="application/json", icon=":material/save:",
+            disabled=not pacote["pareceres_prof"])
+        salvo = st.file_uploader("Carregar pareceres salvos (.json)", type=["json"], key="carregar_pareceres")
+        if salvo is not None and st.session_state.get("pareceres_carregados") != salvo.file_id:
+            try:
+                dados = json.loads(decodificar(salvo.getvalue()))
+                if not isinstance(dados.get("pareceres"), dict):
+                    raise ValueError
+                # Os campos ja estao na tela; os valores entram no inicio da proxima execucao.
+                st.session_state["pareceres_pendentes"] = dados
+                st.session_state["pareceres_carregados"] = salvo.file_id
+                st.rerun()
+            except (ValueError, AttributeError):
+                st.error("O arquivo não parece um arquivo de pareceres do TestingStudio.", icon=":material/error:")
 
 # ======================= FONTES =============================================
 with aba_fontes:
@@ -2812,6 +3295,9 @@ with aba_laudo:
     st.html(html_secao("Por que confiar nestes testes",
                        "A própria suíte foi conferida antes do veredito. Os detalhes estão na aba Sprint 4."))
     st.html(html_confianca(pacote))
+    if html_pareceres_do_laudo(pacote):
+        st.html(html_secao("Pareceres", "O que concluíram o profissional técnico e a IA. Detalhes na aba Parecer geral."))
+        st.html('<div class="ts-pareceres">' + html_pareceres_do_laudo(pacote) + "</div>")
     st.html(html_secao("O que este laudo não cobre"))
     st.html(html_limites())
     st.html(html_secao("Em que este laudo se apoia",

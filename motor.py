@@ -999,6 +999,13 @@ OPERADORES = {
     "COR": "Condicional: troca AND por OR",
     "LVR": "Variável local: troca uma variável por outra",
 }
+# Nome por extenso de cada operador (sigla em ingles, como na literatura).
+NOMES_DOS_OPERADORES = {
+    "AOR": ("Arithmetic Operator Replacement", "Troca de operador aritmético"),
+    "ROR": ("Relational Operator Replacement", "Troca de operador relacional"),
+    "COR": ("Conditional Operator Replacement", "Troca de conector lógico"),
+    "LVR": ("Local Variable Replacement", "Troca de variável local"),
+}
 
 
 def _mutacoes_da_expressao(no, variaveis):
@@ -1053,10 +1060,16 @@ def gerar_mutantes(programa):
             alterado = dict(c)
             alterado[CAMPO_EXPR[c["t"]]] = mutada
             mutantes.append({
-                "id": f"M{len(mutantes) + 1:02d}", "operador": operador, "linha": c["linha"],
+                "id": "", "operador": operador, "linha": c["linha"],
                 "comando": c["id"], "original": texto_comando(c), "mutado": texto_comando(alterado),
                 "programa": {**programa, "comandos": _trocar_expressao(programa["comandos"], c["id"], mutada)},
             })
+    # Numeracao em ordem: primeiro por operador (AOR, ROR, COR, LVR), depois pela linha do fonte.
+    ordem = {op: i for i, op in enumerate(OPERADORES)}
+    mutantes = [m for _, m in sorted(enumerate(mutantes), key=lambda par: (ordem[par[1]["operador"]],
+                                                                           par[1]["linha"], par[0]))]
+    for numero, m in enumerate(mutantes, 1):
+        m["id"] = f"M{numero:02d}"
     return mutantes
 
 
@@ -1067,13 +1080,13 @@ def executar_mutantes(programa, mutantes, entradas, epsilon=EPSILON_PADRAO, rotu
     originais = [assinatura(executar_funcao(programa, e, epsilon)) for e in entradas]
     resultado = []
     for m in mutantes:
-        morto_por = None
-        for rotulo, entrada, original in zip(rotulos, entradas, originais):
-            if assinatura(executar_funcao(m["programa"], entrada, epsilon)) != original:
-                morto_por = rotulo
-                break
+        # Roda TODOS os casos (e nao so ate o primeiro que mata): assim se sabe quais casos matam
+        # cada mutante, e o escore de qualquer sub-suite sai sem executar de novo.
+        matam = [rotulo for rotulo, entrada, original in zip(rotulos, entradas, originais)
+                 if assinatura(executar_funcao(m["programa"], entrada, epsilon)) != original]
         resultado.append({**{k: v for k, v in m.items() if k != "programa"},
-                          "estado": "Morto" if morto_por else "Vivo", "morto_por": morto_por or ""})
+                          "estado": "Morto" if matam else "Vivo", "morto_por": matam[0] if matam else "",
+                          "matam": matam})
     return resultado
 
 
