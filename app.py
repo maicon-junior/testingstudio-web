@@ -37,7 +37,7 @@ import motor
 # O Streamlit Cloud guarda os modulos importados na memoria. Quando o app.py e
 # atualizado e o motor.py nao (ou o servidor nao o recarrega), as versoes ficam
 # misturadas. Por isso o app confere a versao e, se preciso, recarrega o motor.
-VERSAO_DO_MOTOR = 2
+VERSAO_DO_MOTOR = 3
 if getattr(motor, "VERSAO", 0) < VERSAO_DO_MOTOR:
     motor = importlib.reload(motor)
 try:
@@ -1743,9 +1743,10 @@ Um parágrafo curto por etapa.
 # PASSO 5 - Sprints 2, 3 e 4: tabelas e paineis (os calculos estao em motor.py)
 # ==========================================================================
 @st.cache_data(show_spinner=False, max_entries=64)
-def analise_em_cache(parametros, corpo, linha, epsilon, casos, por_bloco, nome):
+def analise_em_cache(parametros, corpo, linha, epsilon, casos, por_bloco, nome, versao_do_motor):
     """Guarda o resultado da analise: a pagina e reexecutada a cada clique e
-    nao precisa refazer grafo, fluxo de dados e mutantes se nada mudou."""
+    nao precisa refazer grafo, fluxo de dados e mutantes se nada mudou.
+    A versao do motor faz parte da chave: resultado de um motor antigo nunca e reaproveitado."""
     return motor.analisar(list(parametros), corpo, linha, epsilon, list(casos), por_bloco, nome)
 
 
@@ -2968,10 +2969,14 @@ with aba_s2:
 casos_do_motor = tuple((c["id"], tuple(c["entradas"])) for c in casos)
 try:
     analise = analise_em_cache(tuple(parametros), corpo, linha_funcao, epsilon, casos_do_motor,
-                               por_bloco, FUNCAO_ALVO)
+                               por_bloco, FUNCAO_ALVO, motor.VERSAO)
 except motor.Erro4GL as problema:
     st.error(f"Não foi possível fazer a análise estrutural: {problema}.")
     st.stop()
+if any("matam" not in m for m in analise["mutantes"]):          # resultado de uma versao antiga do motor
+    analise_em_cache.clear()
+    analise = analise_em_cache(tuple(parametros), corpo, linha_funcao, epsilon, casos_do_motor,
+                               por_bloco, FUNCAO_ALVO, motor.VERSAO)
 
 with aba_s2:
     painel_caixa_branca(analise, "cad")

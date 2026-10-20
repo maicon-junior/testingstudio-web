@@ -13,7 +13,7 @@ Tudo o que a pagina mostra nas Sprints 2, 3 e 4 e calculado aqui:
 Notacao e criterios: Delamaro, Maldonado e Jino (2007).
 """
 
-VERSAO = 2          # conferida pelo app.py (evita misturar versoes no servidor)
+VERSAO = 3          # conferida pelo app.py (evita misturar versoes no servidor)
 
 import itertools
 import random
