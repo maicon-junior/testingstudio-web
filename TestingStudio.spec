@@ -10,7 +10,10 @@ datas, binaries, hiddenimports = collect_all("streamlit")
 datas += copy_metadata("streamlit")
 
 # Arquivos do projeto que vao dentro do executavel.
-datas += [("app.py", "."), ("motor.py", "."), ("caixa_preta.py", "."), (".streamlit/config.toml", ".streamlit")]
+datas += [("app.py", "."), ("motor.py", "."), ("caixa_preta.py", "."), ("relatorio_pdf.py", "."),
+          (".streamlit/config.toml", ".streamlit")]
+datas += [(os.path.join("fontes_pdf", nome), "fontes_pdf") for nome in os.listdir("fontes_pdf")]
+datas += collect_all("reportlab")[0]
 datas += [(os.path.join("static", nome), "static") for nome in os.listdir("static")]
 if os.path.exists("cad0001_item_calculo.txt"):
     datas += [("cad0001_item_calculo.txt", ".")]
@@ -19,7 +22,7 @@ a = Analysis(
     ["iniciar.py"],
     binaries=binaries,
     datas=datas,
-    hiddenimports=hiddenimports + ["altair", "pandas", "google.genai"],
+    hiddenimports=hiddenimports + ["altair", "pandas", "google.genai", "reportlab"] + collect_all("reportlab")[2],
     # Bibliotecas grandes que o app nao usa: ficam de fora para o arquivo nao inchar.
     excludes=["matplotlib", "scipy", "tkinter", "IPython", "notebook", "pytest",
               "torch", "tensorflow", "sklearn", "PyQt5", "PyQt6", "PySide2", "PySide6"],

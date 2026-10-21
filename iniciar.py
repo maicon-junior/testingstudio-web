@@ -43,13 +43,14 @@ def _dependencias_do_app():
     """Nunca e chamada. Existe para o PyInstaller enxergar o que o app.py usa."""
     import altair  # noqa: F401
     import pandas  # noqa: F401
+    import reportlab  # noqa: F401
     from google import genai  # noqa: F401
 
 
 def main() -> None:
     porta = porta_livre()
     print("=" * 62)
-    print(" TestingStudio Web - Auditoria do CAD0001")
+    print(" TestingStudio Web - Laudo de qualidade de testes")
     print(f" A pagina vai abrir no navegador: http://localhost:{porta}")
     print(" Para encerrar, feche esta janela.")
     print("=" * 62, flush=True)

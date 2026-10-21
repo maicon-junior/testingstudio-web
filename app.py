@@ -545,6 +545,31 @@ ESTILO_CSS = """
 [data-testid="stTabs"] [role="tablist"] { gap: .9rem !important; }
 [data-testid="stTab"] p { font-size: .86rem !important; }
 
+/* ---- tabelas da pagina ---- */
+.ts-tab-caixa { overflow:auto; border:1px solid var(--ts-linha); border-radius:12px; background: var(--ts-cartao);
+  margin: .35rem 0 1rem; }
+.ts-tab-caixa.ts-tab-alta { max-height: 560px; }
+table.ts-tab { border-collapse: separate; border-spacing: 0; width: 100%; font-size: .86rem; color: var(--ts-tinta); }
+.ts-tab-larga table.ts-tab { font-size: .79rem; }
+.ts-tab-larga table.ts-tab td, .ts-tab-larga table.ts-tab thead th { padding-left: .5rem; padding-right: .5rem; }
+table.ts-tab thead th { position: sticky; top: 0; z-index: 1; background: var(--ts-relevo); color: var(--ts-suave);
+  font-weight: 600; text-align: left; padding: .55rem .7rem; border-bottom: 1px solid var(--ts-linha);
+  white-space: nowrap; font-size: .78rem; letter-spacing: .02em; }
+table.ts-tab td { padding: .5rem .7rem; border-bottom: 1px solid var(--ts-linha); vertical-align: top; line-height: 1.45;
+  overflow-wrap: break-word; word-break: normal; hyphens: none; }
+table.ts-tab td:first-child { white-space: nowrap; font-weight: 600; }
+table.ts-tab td.ts-st-ok, table.ts-tab td.ts-st-ruim, table.ts-tab td.ts-st-alerta { white-space: nowrap; }
+table.ts-tab tbody tr:nth-child(even) td { background: color-mix(in srgb, var(--ts-relevo) 55%, transparent); }
+table.ts-tab tbody tr:hover td { background: var(--ts-destaque-suave); }
+table.ts-tab tbody tr:last-child td { border-bottom: 0; }
+table.ts-tab th.ts-num, table.ts-tab td.ts-num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+table.ts-tab th.ts-centro, table.ts-tab td.ts-centro { text-align: center; min-width: 2.6rem; }
+table.ts-tab td.ts-cod { font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: .8em; min-width: 12rem; }
+table.ts-tab td.ts-st-ok { color: var(--ts-ok); font-weight: 600; }
+table.ts-tab td.ts-st-ruim { color: var(--ts-ruim); font-weight: 600; }
+table.ts-tab td.ts-st-alerta { color: var(--ts-alerta); font-weight: 600; }
+@media print { .ts-tab-caixa.ts-tab-alta { max-height: none; overflow: visible; } }
+
 /* ---- operadores e suites de mutacao ---- */
 .ts-operadores { display:grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: .9rem; margin: .4rem 0 .8rem; }
 .ts-operador { background: var(--ts-cartao); border:1px solid var(--ts-linha); border-radius: 14px; padding: .95rem 1.05rem;
@@ -789,43 +814,49 @@ def estado_geral(d) -> str:
     return "ok"
 
 
-def html_veredito(d) -> str:
+def veredito_dados(d) -> dict:
+    """Selo, titulo, texto e numeros do veredito (usados no site e no PDF)."""
     q, mut = d["qualidade"], d["mutacao"]
     estado = estado_geral(d)
     v = d["suite"]
     causas = [ACHADOS_SIMPLES[c][0].lower() for c in q["achados"]]
     com_oraculo = q["aprovados"] + q["reprovados"]
     if com_oraculo == 0:
-        selo = chip("Falta a especificação", "alerta")
+        selo = ("Falta a especificação", "alerta")
         titulo = "Os testes rodaram, mas ainda não há como julgar as respostas."
         texto = ("A resposta certa de cada teste vem da especificação do programa. Preencha-a na aba "
                  "Programa e especificação e o laudo é refeito na hora.")
     elif estado == "ruim":
-        selo = chip("Reprovado na conferência", "ruim")
+        selo = ("Reprovado na conferência", "ruim")
         titulo = "O programa ainda não cumpre tudo o que foi combinado."
         texto = (f"{q['reprovados']} de {q['total']} testes receberam uma resposta diferente da regra. "
                  f"{'O motivo é um só' if len(causas) == 1 else 'Os motivos'}: {', '.join(causas)}.")
     elif estado == "alerta" and q["sem_oraculo"]:
-        selo = chip("Aprovado, com ressalvas", "alerta")
+        selo = ("Aprovado, com ressalvas", "alerta")
         titulo = "O programa respondeu como combinado onde a especificação define a resposta."
         texto = (f"{q['aprovados']} testes aprovados. Em {q['sem_oraculo']} testes a especificação não diz qual "
                  "é a resposta certa; complete-a na aba Programa e especificação.")
     elif estado == "alerta":
-        selo = chip("Aprovado, com ressalvas", "alerta")
+        selo = ("Aprovado, com ressalvas", "alerta")
         titulo = "O programa respondeu como combinado, mas os testes ainda não alcançam tudo."
         texto = (f"Os {q['aprovados']} testes com resposta definida foram aprovados. Parte do código ou dos defeitos "
                  "plantados ainda escapa aos testes; veja as conferências abaixo.")
     else:
-        selo = chip("Aprovado na conferência", "ok")
+        selo = ("Aprovado na conferência", "ok")
         titulo = "O programa respondeu como combinado em todos os testes."
         texto = (f"Os {q['aprovados']} testes foram aprovados, passaram por todo o código e perceberam todos os "
                  "defeitos plantados de propósito.")
     fatos = [("Testes executados", q["total"]), ("Formas de teste aplicadas", 4),
              ("Defeitos plantados percebidos", f"{mut['Md']}/{mut['Mt'] - mut['Me']}"),
              ("Conferências dos próprios testes", f"{v['ok']}/{v['total']}")]
-    return (f'<section class="ts-veredito ts-{estado}"><div>{selo}<h2>{esc(titulo)}</h2><p>{esc(texto)}</p></div>'
-            '<dl class="ts-fatos">' + "".join(f"<div><dt>{esc(r)}</dt><dd>{esc(v)}</dd></div>" for r, v in fatos)
-            + "</dl></section>")
+    return {"estado": estado, "selo": selo, "titulo": titulo, "texto": texto, "fatos": fatos}
+
+
+def html_veredito(d) -> str:
+    v = veredito_dados(d)
+    return (f'<section class="ts-veredito ts-{v["estado"]}"><div>{chip(*v["selo"])}<h2>{esc(v["titulo"])}</h2>'
+            f'<p>{esc(v["texto"])}</p></div><dl class="ts-fatos">'
+            + "".join(f"<div><dt>{esc(r)}</dt><dd>{esc(x)}</dd></div>" for r, x in v["fatos"]) + "</dl></section>")
 
 
 def casos_da_regra(chave, casos, spec):
@@ -879,7 +910,8 @@ def _medidor(fracao: float) -> str:
     return f'<div class="ts-medidor" aria-hidden="true"><span style="width:{max(0, min(100, fracao * 100)):.0f}%"></span></div>'
 
 
-def html_estacoes(d) -> str:
+def estacoes_dados(d):
+    """As quatro conferencias do laudo (site e PDF)."""
     q, a, mut, m = d["qualidade"], d["analise"], d["mutacao"], d["analise"]["metricas"]
     nos, arestas = a["cobertura"]["Todos-Nós"], a["cobertura"]["Todas-Arestas"]
     usos = a["criterios"]["Todos-Usos"]
@@ -895,7 +927,7 @@ def html_estacoes(d) -> str:
          q["aprovados"] / com_oraculo if com_oraculo else 0,
          f"Grupos de valores testados: {q['classes'][0]} de {q['classes'][1]}. "
          f"Fronteiras testadas: {q['pontos'][0]} de {q['pontos'][1]}.",
-         chip("Encontrou defeito", "ruim") if q["reprovados"] else chip("Tudo conforme", "ok")),
+         ("Encontrou defeito", "ruim") if q["reprovados"] else ("Tudo conforme", "ok")),
         ("Conferência 2", "Percorremos o programa por dentro", "Caixa-branca: grafo de fluxo e McCabe",
          "Como percorrer todas as ruas de um bairro: desenhamos o mapa do código e conferimos se os testes "
          "passaram por cada trecho e por cada desvio.",
@@ -903,14 +935,14 @@ def html_estacoes(d) -> str:
          min(nos[0] / nos[1] if nos[1] else 0, arestas[0] / arestas[1] if arestas[1] else 0),
          f"Trechos percorridos: {porcento(nos)}. O mapa tem {m['N']} trechos, {m['E']} ligações e "
          f"{m['V']} caminhos independentes.",
-         chip("Cobertura total", "ok") if estrutura_total else chip("Cobertura parcial", "alerta")),
+         ("Cobertura total", "ok") if estrutura_total else ("Cobertura parcial", "alerta")),
         ("Conferência 3", "Seguimos cada dado", "Fluxo de dados: pares Def-Uso",
          "Como rastrear uma encomenda: cada valor foi acompanhado do ponto em que é definido até cada ponto "
          "em que é usado.",
          f"{usos[0]} de {usos[1]}", "percursos de dados exercitados",
          usos[0] / usos[1] if usos[1] else 0,
          f"{len(a['fluxo_tabela'])} variáveis acompanhadas, em cálculos e em decisões.",
-         chip("Todos exercitados", "ok") if usos[0] == usos[1] else chip("Faltam percursos", "alerta")),
+         ("Todos exercitados", "ok") if usos[0] == usos[1] else ("Faltam percursos", "alerta")),
         ("Conferência 4", "Testamos os próprios testes", "Teste de mutação: escore MS",
          "Como um simulado de incêndio: plantamos defeitos de propósito, um de cada vez, para ver se os "
          "testes dão o alarme.",
@@ -919,13 +951,18 @@ def html_estacoes(d) -> str:
          f"Escore de mutação: {texto_ms(mut)}." + (f" {mut['Me']} equivalentes descontados." if mut["Me"] else "")
          + "".join(f" Só com o caminho feliz, {l['Md']} de {l['Mt'] - l['Me']} seriam percebidos."
                    for l in d.get("comparacao_suites", []) if l["nome"] == "Somente caminho feliz" and l["casos"]),
-         chip("Testes atentos", "ok") if ms is not None and ms >= 100 else
-         (chip("Bons, com lacunas", "alerta") if ms is not None and ms >= 80 else chip("Testes fracos", "ruim"))),
+         ("Testes atentos", "ok") if ms is not None and ms >= 100 else
+         (("Bons, com lacunas", "alerta") if ms is not None and ms >= 80 else ("Testes fracos", "ruim"))),
     ]
+    return cartoes
+
+
+def html_estacoes(d) -> str:
+    cartoes = estacoes_dados(d)
     blocos = []
     for passo, titulo, tecnico, texto, numero, rotulo, fracao, detalhe, selo in cartoes:
         blocos.append(f'<article class="ts-estacao"><div class="ts-estacao-topo"><span class="ts-passo">{esc(passo)}'
-                      f'</span>{selo}</div><h3>{esc(titulo)}</h3><p class="ts-tecnico">{esc(tecnico)}</p>'
+                      f'</span>{chip(*selo)}</div><h3>{esc(titulo)}</h3><p class="ts-tecnico">{esc(tecnico)}</p>'
                       f'<p class="ts-texto">{esc(texto)}</p><div class="ts-medida"><b>{esc(numero)}</b>'
                       f'<span>{esc(rotulo)}</span></div>{_medidor(fracao)}<p class="ts-detalhe">{esc(detalhe)}</p></article>')
     return '<div class="ts-estacoes">' + "".join(blocos) + "</div>"
@@ -1046,8 +1083,8 @@ def html_confianca(d) -> str:
             "</div></div>")
 
 
-def html_limites() -> str:
-    itens = [
+def itens_dos_limites():
+    return [
         ("Uma função por vez.", f"O laudo examina a função {FUNCAO_ALVO}; telas, banco de dados e a "
                                 "comunicação entre módulos ficam fora."),
         ("Interpretação do código.", "A ferramenta lê e executa o 4GL por conta própria (IF, CASE, WHILE, FOR, "
@@ -1060,6 +1097,10 @@ def html_limites() -> str:
                                     "se baseia em mil combinações de valores, não em uma prova matemática."),
         ("Textos de IA são opcionais.", "O Gemini só redige textos; todos os números vêm dos cálculos da ferramenta."),
     ]
+
+
+def html_limites() -> str:
+    itens = itens_dos_limites()
     return '<div class="ts-cartao"><ul class="ts-marcadores">' + "".join(
         f"<li><b>{esc(t)}</b> {esc(x)}</li>" for t, x in itens) + "</ul></div>"
 
@@ -1182,6 +1223,56 @@ def html_pareceres_do_laudo(d) -> str:
     return "".join(partes)
 
 
+COLUNAS_DE_CODIGO = {"Asserção", "Original", "Mutante (alterado)", "Comandos", "Comando", "Trecho", "Caminho",
+                     "Nós percorridos", "Arestas percorridas"}
+_NUMERO = __import__("re").compile(r"^-?[\d.]+(,\d+)?%?$|^NULL$|^—$")
+
+
+def _classe_da_celula(coluna: str, texto: str, numerica: bool, marcas: bool) -> str:
+    classes = []
+    if numerica:
+        classes.append("ts-num")
+    if marcas:
+        classes.append("ts-centro")
+    if coluna in COLUNAS_DE_CODIGO:
+        classes.append("ts-cod")
+    if texto.startswith("✓") or texto in ("Morto", "Atendido"):
+        classes.append("ts-st-ok")
+    elif texto.startswith("✕") or texto == "Reprovado":
+        classes.append("ts-st-ruim")
+    elif texto.startswith("!") or texto == "Vivo":
+        classes.append("ts-st-alerta")
+    return " ".join(classes)
+
+
+def html_tabela(df: pd.DataFrame) -> str:
+    """Tabela da pagina: cabecalho fixo, linhas alternadas, texto que quebra linha,
+    numeros a direita, codigo em fonte monoespacada e estados coloridos."""
+    if df is None or df.empty:
+        return '<p class="ts-detalhe">Nada a mostrar.</p>'
+    textos = df.astype(str).replace({"nan": "", "None": ""})
+    colunas = list(df.columns)
+    numericas = {c for c in colunas if all(_NUMERO.match(v.strip()) or v.strip() == "" for v in textos[c])
+                 and any(v.strip() for v in textos[c])}
+    marcas = {c for c in colunas if all(v in ("✓", "✕", "") or v.isdigit() for v in textos[c].str.strip())
+              and any(v in ("✓", "✕") for v in textos[c].str.strip())}
+    cab = "".join(f'<th class="{"ts-num" if c in numericas else ("ts-centro" if c in marcas else "")}">{esc(c)}</th>'
+                  for c in colunas)
+    linhas = []
+    for _, linha in textos.iterrows():
+        celulas = "".join(f'<td class="{_classe_da_celula(c, linha[c].strip(), c in numericas, c in marcas)}">'
+                          f'{esc(linha[c])}</td>' for c in colunas)
+        linhas.append(f"<tr>{celulas}</tr>")
+    alta = " ts-tab-alta" if len(df) > 14 else ""
+    larga = " ts-tab-larga" if len(colunas) > 9 else ""
+    return (f'<div class="ts-tab-caixa{alta}{larga}"><table class="ts-tab"><thead><tr>{cab}</tr></thead>'
+            f'<tbody>{"".join(linhas)}</tbody></table></div>')
+
+
+def mostrar_tabela(df: pd.DataFrame) -> None:
+    st.html(html_tabela(df))
+
+
 def html_matriz(casos, spec) -> str:
     """Matriz parametro x ponto: mostra de uma vez o que foi coberto e o resultado."""
     colunas = []
@@ -1251,14 +1342,20 @@ def svg_regua(fronteira, lado: str, pontos, epsilon, texto_invalido: str, texto_
                       f'{esc(formato_br(valor))}</text>')
     lados = {"min": {"Off-Point": ("end", -9), "On-Point": ("start", 9)},
              "max": {"On-Point": ("end", -9), "Off-Point": ("start", 9)}}[lado]
-    for ponto, d in zip(pontos, deslocamentos):
+    anterior, alto = None, False
+    for ponto, d in sorted(zip(pontos, deslocamentos), key=lambda par: par[1]):
         x = X(d)
         nome = ponto["rotulo"].split(" (")[0]
         ancora, dx = lados.get(nome, ("middle", 0))
+        alto = (not alto) if anterior is not None and x - anterior < 150 else False
+        anterior = x
+        y = 14 if alto else 40
+        guia = (f'<line x1="{x:.1f}" x2="{x:.1f}" y1="{y + 22}" y2="84" stroke="var(--ts-linha)" stroke-width="1"/>'
+                if alto else "")
         partes.append(f'<g><title>{esc(ponto["rotulo"])}: {esc(formato_br(ponto["valor"]))}. '
-                      f'{esc(ponto["condicao"])}. Esperado: {esc(ponto["esperado"])}.</title>'
-                      f'<text class="ts-tinta" x="{x + dx:.1f}" y="40" font-size="14" font-weight="700" text-anchor="{ancora}">{esc(nome)}</text>'
-                      f'<text class="ts-suave" x="{x + dx:.1f}" y="58" font-size="13" text-anchor="{ancora}">{esc(formato_br(ponto["valor"]))}</text>'
+                      f'{esc(ponto["condicao"])}. Esperado: {esc(ponto["esperado"])}.</title>{guia}'
+                      f'<text class="ts-tinta" x="{x + dx:.1f}" y="{y}" font-size="14" font-weight="700" text-anchor="{ancora}">{esc(nome)}</text>'
+                      f'<text class="ts-suave" x="{x + dx:.1f}" y="{y + 18}" font-size="13" text-anchor="{ancora}">{esc(formato_br(ponto["valor"]))}</text>'
                       f'<circle class="ts-ponto" cx="{x:.1f}" cy="92" r="7.5" stroke-width="2.4"/></g>')
     partes.append(f'<text class="ts-suave" x="{esquerda}" y="160" font-size="12.5">{esc(texto_esq)}</text>')
     partes.append(f'<text class="ts-suave" x="{largura - direita}" y="160" font-size="12.5" text-anchor="end">'
@@ -1269,8 +1366,8 @@ def svg_regua(fronteira, lado: str, pontos, epsilon, texto_invalido: str, texto_
     return "".join(partes)
 
 
-def reguas(spec):
-    """Uma regua por fronteira: [(titulo, svg)]."""
+def dados_das_reguas(spec):
+    """Uma regua por fronteira: [(titulo, dados)] (o site desenha em SVG; o PDF, com reportlab)."""
     r = spec["retorno_invalido"]
     resposta = f", a resposta deve ser {formato_br(r)}" if r is not None else ""
     lista = []
@@ -1291,8 +1388,16 @@ def reguas(spec):
                 invalido = f"Região inválida: valor maior que {b}{resposta}"
                 valido = f"Região válida: valor até {b}"
                 titulo = f"{nomes}: limite máximo {b}"
-            lista.append((titulo, svg_regua(limite, lado, pontos, p["tipo"]["epsilon"], invalido, valido)))
+            lista.append((titulo, {"fronteira": limite, "lado": lado, "epsilon": p["tipo"]["epsilon"],
+                                   "pontos_completos": pontos, "invalido": invalido, "valido": valido,
+                                   "pontos": [(x["rotulo"], x["valor"], x["valido"]) for x in pontos]}))
     return lista
+
+
+def reguas(spec):
+    """Uma regua por fronteira: [(titulo, svg)]."""
+    return [(titulo, svg_regua(r["fronteira"], r["lado"], r["pontos_completos"], r["epsilon"], r["invalido"],
+                               r["valido"])) for titulo, r in dados_das_reguas(spec)]
 
 
 def _fontes_embutidas() -> str:
@@ -1867,7 +1972,7 @@ def painel_caixa_branca(a, chave: str) -> None:
         st.caption("Losango: nó predicativo. Círculo duplo: saída. V e F: desvio verdadeiro e falso. "
                    "Tracejado laranja: não coberto pela suíte.")
     with direita:
-        st.dataframe(tabela_nos(a), hide_index=True, width="stretch")
+        mostrar_tabela(tabela_nos(a))
         st.caption("Blocos indivisíveis: comandos em sequência, sem desvio, formam um único nó."
                    if grafo["por_bloco"] else "Um nó para cada comando executável.")
 
@@ -1883,16 +1988,15 @@ def painel_caixa_branca(a, chave: str) -> None:
                    "percorrido zero ou uma vez.")
 
     st.markdown("**O que cada caso de teste percorre**")
-    st.dataframe(tabela_execucoes(a), hide_index=True, width="stretch")
+    mostrar_tabela(tabela_execucoes(a))
     st.markdown("**Caminhos completos do grafo**")
-    st.dataframe(tabela_caminhos(a), hide_index=True, width="stretch")
+    mostrar_tabela(tabela_caminhos(a))
     faltam = [x for x in a["arestas"] if not x["coberta"]]
     if faltam:
         st.markdown("**Arestas ainda não cobertas**")
-        st.dataframe(pd.DataFrame([{
+        mostrar_tabela(pd.DataFrame([{
             "Aresta": f"({x['de']},{x['para']})" + (f" {x['rotulo']}" if x["rotulo"] else ""),
-            "Como cobrir": como_cobrir(x["sugestao"], a["sondagens"])} for x in faltam]),
-            hide_index=True, width="stretch")
+            "Como cobrir": como_cobrir(x["sugestao"], a["sondagens"])} for x in faltam]))
 
 
 def painel_fluxo(a, chave: str) -> None:
@@ -1905,12 +2009,12 @@ def painel_fluxo(a, chave: str) -> None:
     for coluna, (nome, par) in zip(c, a["criterios"].items()):
         coluna.metric(f"{nome}: {par[0]} de {par[1]}", porcento(par), border=True, help=ajudas[nome])
     st.markdown("**Definições e usos de cada variável**")
-    st.dataframe(tabela_variaveis(a), hide_index=True, width="stretch")
+    mostrar_tabela(tabela_variaveis(a))
     st.caption("d: nó onde a variável recebe valor (parâmetros são definidos no nó de entrada). "
                "c-uso: uso em cálculo ou retorno, associado a um nó. "
                "p-uso: uso em decisão, associado às arestas que saem do nó.")
     st.markdown("**Pares Def-Uso (caminho livre de definição entre d e o uso)**")
-    st.dataframe(tabela_pares(a), hide_index=True, width="stretch")
+    mostrar_tabela(tabela_pares(a))
     if a["uso_sem_definicao"]:
         st.warning("Uso sem definição que o alcance: " + ", ".join(
             f"{v} (linha {linha})" for v, linha in a["uso_sem_definicao"]) +
@@ -2144,10 +2248,7 @@ def painel_mutacao(a, chave: str, casos):
         visivel = visivel[visivel["Estado"] == "Morto"]
     elif filtro_estado == "Vivos":
         visivel = visivel[visivel["Estado"] != "Morto"]
-    st.dataframe(visivel, hide_index=True, width="stretch", height="content",
-                 column_config={"Original": st.column_config.TextColumn(width="medium"),
-                                "Mutante (alterado)": st.column_config.TextColumn(width="medium"),
-                                "Análise": st.column_config.TextColumn(width="large")})
+    mostrar_tabela(visivel)
     st.caption(f"{len(visivel)} de {len(tabela)} mutantes. Ordem: operador (AOR, ROR, COR, LVR), linha do fonte e "
                "número. 'Morto pelo caso' é o primeiro caso da suíte que deu resultado diferente do original.")
     return resumo_mutacao(a, equivalentes), comparacao
@@ -2280,17 +2381,17 @@ def tabela_casos_derivados(casos, rtm) -> pd.DataFrame:
 
 
 def tabela_rtm(casos, rtm) -> pd.DataFrame:
-    """Linhas = requisitos, colunas = casos. ✓ verificado e passou; ✕ verificado e falhou."""
+    """Linhas = casos, colunas = requisitos (cabe na tela e no papel).
+    ✓ verifica e passou; ✕ verifica e falhou; vazio = nao verifica. A ultima linha soma cada requisito."""
     linhas = []
-    for r in rtm["requisitos"]:
-        linha = {"Requisito": r["id"]}
-        for c in casos:
-            marca = ""
-            if r["id"] in rtm["traco"][c["id"]]:
-                marca = "✓" if c["status"] == "Aprovado" else "✕"
-            linha[c["id"]] = marca
-        linha["Total"] = len(rtm["por_req"][r["id"]])
+    for c in casos:
+        linha = {"Caso": c["id"]}
+        for r in rtm["requisitos"]:
+            linha[r["id"]] = ("✓" if c["status"] == "Aprovado" else "✕") if r["id"] in rtm["traco"][c["id"]] else ""
+        linha["Fluxo"] = fluxo_do_caso(c)
         linhas.append(linha)
+    linhas.append({"Caso": "Total", **{r["id"]: str(len(rtm["por_req"][r["id"]])) for r in rtm["requisitos"]},
+                   "Fluxo": ""})
     return pd.DataFrame(linhas)
 
 
@@ -2496,6 +2597,244 @@ if __name__ == "__main__":
 
 GRANULARIDADES = ["Blocos indivisíveis (definição formal)", "Um nó por comando"]
 # ==========================================================================
+# PDF: o conteudo de cada aba, em blocos (desenhados por relatorio_pdf.py)
+# ==========================================================================
+ABAS = ["Laudo", "Programa e especificação", "Sprint 1: caixa-preta", "Sprint 2: caixa-branca",
+        "Sprint 3: dados e mutação", "Sprint 4: validação", "Parecer geral", "Fontes"]
+CHAVE_DA_ABA = {"Sprint 1: caixa-preta": "s1", "Sprint 2: caixa-branca": "s2",
+                "Sprint 3: dados e mutação": "s3", "Sprint 4: validação": "s4", "Parecer geral": "geral"}
+
+
+def _assinatura_prof(dados) -> str:
+    return " · ".join(x for x in (dados["nome"] or "Profissional não identificado", dados["funcao"], dados["quando"]) if x)
+
+
+def blocos_de_parecer(d, chave: str, titulo: str = "Pareceres"):
+    prof, ia = d["pareceres_prof"].get(chave), d["pareceres"].get(chave)
+    if not (prof or ia):
+        return []
+    blocos = [("h2", titulo)]
+    if prof:
+        blocos.append(("parecer", "Parecer do profissional técnico", prof["veredito"], prof["texto"], _assinatura_prof(prof)))
+    if ia:
+        blocos.append(("ia", "Parecer escrito com IA (Gemini)", ia["texto"], f"Modelo {ia['modelo']} · {ia['quando']}"))
+    return blocos
+
+
+def tabela_matriz(casos, spec) -> pd.DataFrame:
+    """A matriz parametro x ponto da Sprint 1, como tabela."""
+    colunas = []
+    for p in spec["params"]:
+        for ponto in cp.pontos_do_parametro(p):
+            if ponto["rotulo"] not in colunas:
+                colunas.append(ponto["rotulo"])
+    colunas.append("Nulo")
+    linhas = []
+    for p in spec["params"]:
+        existentes = {x["rotulo"] for x in cp.pontos_do_parametro(p)} | {"Nulo"}
+        linha = {"Parâmetro": p["nome"]}
+        for coluna in colunas:
+            caso = next((c for c in casos if c["alvo"] == p["nome"] and c["rotulo"] == coluna), None)
+            if coluna not in existentes:
+                linha[coluna] = "não se aplica"
+            elif caso is None:
+                linha[coluna] = "não testado"
+            else:
+                linha[coluna] = f"{'✓' if caso['status'] == 'Aprovado' else ('✕' if caso['status'] == 'Reprovado' else '–')} {caso['id']}"
+        linhas.append(linha)
+    return pd.DataFrame(linhas)
+
+
+def _codigo_numerado(texto: str, primeira: int) -> str:
+    return "\n".join(f"{n:>4}  {l}" for n, l in enumerate(texto.split("\n"), start=primeira))
+
+
+def blocos_laudo(d):
+    v = veredito_dados(d)
+    marca = {"ok": "✓", "ruim": "✕", "alerta": "!", "neutro": "–"}
+    blocos = [("h2", "Veredito"), ("p", f"{marca[v['selo'][1]]} {v['selo'][0]}. {v['titulo']}"), ("p", v["texto"]),
+              ("metricas", [(r, str(x)) for r, x in v["fatos"]])]
+    regras = []
+    for i, (regra, (verificada, falhas)) in enumerate(zip(REGRAS, situacao_das_regras(d)), 1):
+        situacao = (f"✕ Não cumprida em {len(falhas)} teste{'s' if len(falhas) > 1 else ''}" if falhas
+                    else ("✓ Cumprida" if verificada else "! Sem teste"))
+        regras.append({"Requisito": f"REQ{i:02d}", "Regra": regra["titulo"], "Detalhe": regra["detalhe"],
+                       "Testes": verificada, "Situação": situacao})
+    blocos += [("h2", "O combinado, regra por regra"),
+               ("nota", "O que a especificação diz que a função deve fazer, e se ela cumpriu cada regra nos testes."),
+               ("tabela", pd.DataFrame(regras)), ("h2", "Como o programa foi testado"),
+               ("nota", "Quatro conferências independentes; cada uma responde a uma pergunta diferente sobre a qualidade.")]
+    for passo, titulo, tecnico, texto, numero, rotulo, _, detalhe, selo in estacoes_dados(d):
+        blocos += [("h3", f"{passo}: {titulo}"), ("nota", tecnico), ("p", texto),
+                   ("p", f"Resultado: {numero} {rotulo}. {marca[selo[1]]} {selo[0]}. {detalhe}")]
+    caso = caso_exemplar(d)
+    if caso is not None:
+        obtido = "erro" if caso["erro"] else formato_br(caso["obtido"])
+        blocos += [("h2", "O defeito, em um exemplo"),
+                   ("metricas", [("O teste enviou", texto_entrada(caso["entradas"])),
+                                 ("O combinado manda", formato_br(caso["esperado"])), ("O programa respondeu", obtido)]),
+                   ("p", f"Entrada: {_descreve_entrada(caso, d['parametros'])}. Esperado: {_o_que_manda(caso)}. "
+                         f"{ACHADOS[caso['achado']][1]}")]
+        conserto = cp.condicao_que_falta(SPEC)
+        if caso["achado"] == "INVALIDO_ACEITO" and conserto:
+            blocos += [("p", "Como corrigir: antes da conta, incluir a verificação que falta:"), ("codigo", conserto)]
+    s = d["suite"]
+    blocos += [("h2", "Por que confiar nestes testes"),
+               ("metricas", [("Conferências dos próprios testes atendidas", f"{s['ok']}/{s['total']}")]),
+               ("tabela", pd.DataFrame([{"Pergunta": c["pergunta"], "Medida": c["curto"],
+                                         "Situação": "✓ Atendido" if c["ok"] else "! Pendente"} for c in s["criterios"]])),
+               ("p", "Quem decide o que é certo: a resposta esperada de cada teste vem da especificação, e não do "
+                     "próprio código. Assim o programa nunca é comparado com ele mesmo.")]
+    blocos += blocos_de_parecer(d, "geral", "Pareceres")
+    blocos += [("h2", "O que este laudo não cobre")] + [("p", f"{t} {x}") for t, x in itens_dos_limites()]
+    blocos += [("h2", "Glossário"), ("tabela", pd.DataFrame([{"Termo": t, "Significado": x} for t, x in GLOSSARIO]))]
+    return blocos
+
+
+def blocos_programa(d):
+    blocos = [("h2", "Origem dos dados"), ("tabela", d["origem"]), ("h2", "Unidade sob teste"),
+              ("codigo", _codigo_numerado(d["texto_funcao"], d["linha_funcao"])),
+              ("nota", "O número à esquerda é a linha no arquivo; é o mesmo usado nos nós do grafo.")]
+    if len(d["descartadas"]):
+        blocos += [("h3", "Funções do arquivo que ficam de fora"), ("tabela", d["descartadas"])]
+    blocos += [("h2", "Especificação (de onde vem a resposta certa)")]
+    if SPEC["enunciado"]:
+        blocos.append(("p", SPEC["enunciado"]))
+    blocos += [("tabela", pd.DataFrame([{"Requisito": f"REQ{i:02d}", "Regra": r["formal"]} for i, r in enumerate(REGRAS, 1)])),
+               ("h3", "Faixa válida e valores usados nos testes"),
+               ("tabela", pd.DataFrame([{"Parâmetro": p["nome"], "Tipo": p["tipo"]["rotulo"],
+                                         "Mínimo válido": formato_br(p["minimo"]) if p["minimo"] is not None else "—",
+                                         "Máximo válido": formato_br(p["maximo"]) if p["maximo"] is not None else "—",
+                                         "Valor comum": formato_br(p["comum"]), "Valor interior": formato_br(p["interior"])}
+                                        for p in SPEC["params"]])),
+               ("p", f"Valor em branco (NULL): {cp.NULO_OPCOES[SPEC['nulo']]}. Resposta para valor inválido: "
+                     f"{formato_br(SPEC['retorno_invalido']) if SPEC['retorno_invalido'] is not None else 'não definida'}."),
+               ("h2", "Tipos de dado e Épsilon"), ("tabela", tabela_epsilon(SPEC)), ("p", d["justificativa"])]
+    return blocos
+
+
+def blocos_sprint1(d):
+    q = d["qualidade"]
+    blocos = [("metricas", [("Casos", str(q["total"])), ("Aprovados", str(q["aprovados"])),
+                            ("Reprovados", str(q["reprovados"])), ("Classes", f"{q['classes'][0]}/{q['classes'][1]}"),
+                            ("Fronteiras", f"{q['pontos'][0]}/{q['pontos'][1]}"), ("Defeitos", str(len(q["achados"])))])]
+    for codigo, ids in q["achados"].items():
+        blocos.append(("p", f"✕ {ACHADOS[codigo][0]}: {len(ids)} casos ({', '.join(ids)}). {ACHADOS[codigo][1]}"))
+    blocos += [("h2", "Cálculo do Épsilon (ε)"), ("p", d["justificativa"]), ("tabela", tabela_epsilon(SPEC)),
+               ("h2", "Especificação usada como oráculo")]
+    blocos += [("p", f"REQ{i:02d}. {r['formal']}") for i, r in enumerate(REGRAS, 1)]
+    blocos += [("h2", "Classes de equivalência (PCE)"), ("tabela", d["pce"]),
+               ("h2", "Pontos de fronteira (AVL)"), ("tabela", d["pontos"])]
+    for titulo, dados in dados_das_reguas(SPEC):
+        blocos += [("h3", f"Régua: {titulo}"), ("regua", dados)]
+    blocos += [("h2", "Cobertura da suíte planejada"), ("tabela", tabela_matriz(d["casos_base"], SPEC)),
+               ("nota", "Cada célula é um caso: um parâmetro recebe o valor da coluna e os outros ficam no valor comum."),
+               ("h2", "Casos de teste"), ("tabela", d["casos"].drop(columns=["Técnica"], errors="ignore")),
+               ("nota", "Esperado: calculado pela especificação. Obtido: resultado da execução da função.")]
+    return blocos + blocos_de_parecer(d, "s1")
+
+
+def blocos_sprint2(d):
+    a, m = d["analise"], d["analise"]["metricas"]
+    cob = a["cobertura"]
+    blocos = [("metricas", [("Nós (N)", str(m["N"])), ("Arestas (E)", str(m["E"])), ("Predicativos (P)", str(m["P"])),
+                            ("Regiões (R)", str(m["R"])), ("V(G)", str(m["V"]))]),
+              ("p", f"Método 1, topológico: V(G) = E − N + 2 = {m['E']} − {m['N']} + 2 = {m['v_topologico']}"),
+              ("p", f"Método 2, lógico: V(G) = P + 1 = {m['P']} + 1 = {m['v_logico']}"),
+              ("p", f"Método 3, espacial: V(G) = R = {m['regioes_internas']} internas + 1 externa = {m['v_espacial']}"),
+              ("h2", "Grafo de fluxo de controle"),
+              ("grafo", a["grafo"], set(a["nos_cobertos"]), set(a["arestas_cobertas"])),
+              ("nota", "Círculo = trecho de comandos; losango = decisão; círculo duplo = fim; seta para a direita e "
+                       "para cima = volta de laço. Tracejado laranja = não percorrido pelos testes."),
+              ("tabela", d["nos"]), ("h2", "Cobertura"),
+              ("metricas", [("Todos-Nós", f"{porcento(cob['Todos-Nós'])} ({cob['Todos-Nós'][0]} de {cob['Todos-Nós'][1]})"),
+                            ("Todas-Arestas", f"{porcento(cob['Todas-Arestas'])} ({cob['Todas-Arestas'][0]} de {cob['Todas-Arestas'][1]})"),
+                            ("Caminhos", f"{cob['Todos-Caminhos'][0]} de {cob['Todos-Caminhos'][1]}")]),
+              ("h3", "O que cada caso percorre"), ("tabela", d["execucoes"]),
+              ("h3", "Caminhos completos"), ("tabela", d["caminhos"])]
+    return blocos + blocos_de_parecer(d, "s2")
+
+
+def blocos_sprint3(d):
+    a, mut = d["analise"], d["mutacao"]
+    blocos = [("h2", "Fluxo de dados (pares Def-Uso)"),
+              ("metricas", [(nome, f"{porcento(par)} ({par[0]} de {par[1]})") for nome, par in a["criterios"].items()]),
+              ("tabela", d["variaveis"]), ("h3", "Pares Def-Uso"), ("tabela", d["pares"]),
+              ("h2", "Teste de mutação"),
+              ("metricas", [("Gerados (Mt)", str(mut["Mt"])), ("Mortos (Md)", str(mut["Md"])),
+                            ("Equivalentes (Me)", str(mut["Me"])), ("Escore (MS)", texto_ms(mut))]),
+              ("p", f"MS = Md ÷ (Mt − Me) × 100 = {mut['Md']} ÷ ({mut['Mt']} − {mut['Me']}) × 100 = {texto_ms(mut)}"),
+              ("h3", "Os operadores de mutação")]
+    operadores = []
+    for sigla in ORDEM_OPERADORES:
+        do_op = [m for m in mutantes_em_ordem(a) if m["operador"] == sigla]
+        operadores.append({"Operador": sigla, "Nome": motor.NOMES_DOS_OPERADORES[sigla][1],
+                           "O que troca": motor.OPERADORES[sigla].split(": ", 1)[1],
+                           "Exemplo nesta função": f"{do_op[0]['original']}  →  {do_op[0]['mutado']}" if do_op else "—",
+                           "Gerados": len(do_op), "Mortos": sum(1 for m in do_op if m["matam"])})
+    blocos.append(("tabela", pd.DataFrame(operadores)))
+    if d["comparacao_suites"]:
+        blocos += [("h3", "Comparação entre suítes de teste"),
+                   ("barras", [(l["nome"], l["casos"], l["MS"], l["Md"], l["Mt"] - l["Me"]) for l in d["comparacao_suites"]]),
+                   ("nota", conclusao_das_suites(d["comparacao_suites"]))]
+    blocos += [("h3", "Mutantes, por operador (suíte completa)"), ("tabela", d["mutantes"])]
+    return blocos + blocos_de_parecer(d, "s3")
+
+
+def blocos_sprint4(d):
+    s, rtm = d["suite"], d["rtm"]
+    casos = d["casos_lista"]
+    blocos = [("metricas", [("Requisitos cobertos", f"{rtm['ida'][0]} de {rtm['ida'][1]}"),
+                            ("Testes rastreados", f"{rtm['volta'][0]} de {rtm['volta'][1]}"),
+                            ("Conferências da suíte", f"{s['ok']} de {s['total']}"),
+                            ("Asserções que falharam", f"{s['falharam']} de {s['asercoes']}")]),
+              ("h2", "Requisitos derivados da especificação"), ("tabela", d["requisitos"]),
+              ("h2", "Casos de teste por fluxo")]
+    fluxos = []
+    for fluxo in FLUXOS:
+        do_fluxo = [c for c in casos if fluxo_do_caso(c) == fluxo]
+        fluxos.append({"Fluxo": fluxo, "O que é": EXPLICA_FLUXO[fluxo], "Testes": len(do_fluxo),
+                       "Passaram": sum(c["status"] == "Aprovado" for c in do_fluxo),
+                       "Casos": ", ".join(c["id"] for c in do_fluxo) or "nenhum"})
+    blocos += [("tabela", pd.DataFrame(fluxos)), ("tabela", d["derivados"]),
+               ("h2", "Matriz de rastreabilidade (RTM)"),
+               ("p", f"Tudo o que foi pedido foi testado? {rtm['ida'][0]} de {rtm['ida'][1]} requisitos têm teste."
+                     + (f" Sem teste: {', '.join(rtm['sem_teste'])}." if rtm["sem_teste"] else "")),
+               ("p", f"Tudo o que foi testado foi pedido? {rtm['volta'][0]} de {rtm['volta'][1]} testes verificam "
+                     "algum requisito." + (f" Sem requisito: {', '.join(rtm['orfaos'])}." if rtm["orfaos"] else ""))]
+    blocos += [("tabela", d["matriz_rtm"]),
+               ("nota", "Linhas: casos de teste. Colunas: requisitos. ✓ = verifica e passou; ✕ = verifica e falhou."),
+               ("h2", "Conferências da suíte"), ("tabela", d["criterios_suite"]),
+               ("h2", "Asserções (teste de unidade)"), ("p", TEXTO_UNIDADE), ("tabela", d["asercoes"])]
+    return blocos + blocos_de_parecer(d, "s4")
+
+
+def blocos_parecer_geral(d):
+    blocos = blocos_de_parecer(d, "geral", "Parecer geral")
+    for chave, etapa in ETAPAS.items():
+        blocos += blocos_de_parecer(d, chave, etapa["titulo"])
+    return blocos or [("p", "Nenhum parecer foi escrito ou gerado ainda.")]
+
+
+def blocos_fontes(d):
+    return [("h2", "Referências"),
+            ("tabela", pd.DataFrame([{"Nº": r["n"], "Referência": r["texto"], "Onde aparece": r["uso"],
+                                      "Link": r["link"] or "—"} for r in REFERENCIAS])),
+            ("h2", "Origem dos dados desta análise"), ("tabela", d["origem"])]
+
+
+CONSTRUTORES = dict(zip(ABAS, [blocos_laudo, blocos_programa, blocos_sprint1, blocos_sprint2, blocos_sprint3,
+                               blocos_sprint4, blocos_parecer_geral, blocos_fontes]))
+
+
+def pdf_das_abas(d, abas, cor: str) -> bytes:
+    import relatorio_pdf
+    ident = {"arquivo": d["arquivo"], "funcao": FUNCAO_ALVO, "tamanho": f"{d['linhas']} linhas",
+             "quando": d["quando"][:16]}
+    return relatorio_pdf.gerar_pdf([(nome, CONSTRUTORES[nome](d)) for nome in abas], ident, cor)
+
+
+# ==========================================================================
 # INTERFACE WEB (Streamlit)
 # ==========================================================================
 st.set_page_config(page_title="TestingStudio, laudo de qualidade", layout="wide",
@@ -2608,6 +2947,11 @@ lugar_da_faixa = st.empty()       # preenchida depois que a funcao e escolhida
 aba_laudo, aba_programa, aba_s1, aba_s2, aba_s3, aba_s4, aba_parecer, aba_fontes = st.tabs(
     ["Laudo", "Programa e especificação", "Sprint 1: caixa-preta", "Sprint 2: caixa-branca",
      "Sprint 3: dados e mutação", "Sprint 4: validação", "Parecer geral", "Fontes"])
+COR_DO_PDF = CORES_ATUAIS[0]
+TOPO_DA_ABA = {}
+for _nome, _aba in zip(ABAS[1:], [aba_programa, aba_s1, aba_s2, aba_s3, aba_s4, aba_parecer, aba_fontes]):
+    with _aba:
+        TOPO_DA_ABA[_nome] = st.container()
 
 # ======================= PROGRAMA E ESPECIFICACAO ============================
 with aba_programa:
@@ -2655,7 +2999,7 @@ if not testaveis:
         st.error("Nenhuma função deste arquivo pode ser testada. A ferramenta testa uma função por vez, que "
                  "receba parâmetros numéricos e use IF, CASE, WHILE, FOR, LET e RETURN.", icon=":material/error:")
         if descartadas:
-            st.dataframe(tabela_descartadas(), hide_index=True, width="stretch")
+            mostrar_tabela(tabela_descartadas())
     st.stop()
 
 nomes_testaveis = [f["nome"] for f, _ in testaveis]
@@ -2669,7 +3013,7 @@ with aba_programa:
     if descartadas:
         with st.expander(f"{len(descartadas)} função(ões) do arquivo ficam de fora dos testes",
                          icon=":material/info:"):
-            st.dataframe(tabela_descartadas(), hide_index=True, width="stretch")
+            mostrar_tabela(tabela_descartadas())
 funcao, programa = testaveis[nomes_testaveis.index(escolhida)]
 FUNCAO_ALVO = funcao["nome"]
 with lugar_da_faixa:
@@ -2816,12 +3160,11 @@ with aba_programa:
                        icon=":material/save:", key="salvar_spec")
 
     st.subheader("Tipos de dado e Épsilon")
-    st.dataframe(pd.DataFrame([{"Parâmetro": p["nome"], "Tipo": p["tipo"]["rotulo"],
+    mostrar_tabela(pd.DataFrame([{"Parâmetro": p["nome"], "Tipo": p["tipo"]["rotulo"],
                                 "Épsilon (ε)": formato_br(p["tipo"]["epsilon"]),
                                 "Menor valor do tipo": formato_br(p["tipo"]["minimo"]),
                                 "Maior valor do tipo": formato_br(p["tipo"]["maximo"]),
-                                "Observação": p["tipo"]["nota"]} for p in spec["params"]]),
-                 hide_index=True, width="stretch")
+                                "Observação": p["tipo"]["nota"]} for p in spec["params"]]))
 
 epsilons = sorted({p["tipo"]["epsilon"] for p in spec["params"]})
 justificativa = (
@@ -2884,8 +3227,7 @@ df_origem = pd.DataFrame([
 
 with aba_extra:
     if casos_extras:
-        st.dataframe(tabela_casos(casos_extras, parametros).drop(columns=["Técnica", "Parâmetro variado", "Ponto ou classe"]),
-                     hide_index=True, width="stretch")
+        mostrar_tabela(tabela_casos(casos_extras, parametros).drop(columns=["Técnica", "Parâmetro variado", "Ponto ou classe"]))
     else:
         st.caption("Nenhum caso extra preenchido.")
 
@@ -2926,7 +3268,7 @@ with aba_eps:
         "dela, e o ε é calculado a partir do tipo de dado declarado no código.", "epsilon"))
     st.html(html_epsilon(spec))
     st.markdown("**A conta de cada parâmetro**")
-    st.dataframe(tabela_epsilon(spec), hide_index=True, width="stretch")
+    mostrar_tabela(tabela_epsilon(spec))
     st.caption("Fórmula: ε = 10 elevado a menos o número de casas decimais do tipo. DECIMAL(p,s) tem s casas; "
                "INTEGER e SMALLINT não têm casas, então ε = 1. O Off-Point fica um ε abaixo do mínimo válido "
                "ou um ε acima do máximo válido.")
@@ -2937,9 +3279,9 @@ with aba_rel:
         st.write(spec["enunciado"])
     st.markdown("\n".join(f"{i}. {r['formal']}" for i, r in enumerate(REGRAS, 1)))
     st.subheader("Particionamento em classes de equivalência (PCE)")
-    st.dataframe(df_pce, hide_index=True, width="stretch")
+    mostrar_tabela(df_pce)
     st.subheader("Análise do valor limite (AVL) e demais casos")
-    st.dataframe(df_casos, hide_index=True, width="stretch")
+    mostrar_tabela(df_casos)
     st.caption("Esperado: calculado pela especificação. Obtido: resultado da execução da função carregada.")
 
 with aba_graf:
@@ -2953,7 +3295,7 @@ with aba_graf:
         st.caption("A escala é logarítmica dos dois lados da fronteira, para que o On-Point e o Off-Point, "
                    "separados por um ε, não fiquem um sobre o outro. Passe o mouse sobre um ponto para ver a "
                    "condição e o resultado esperado.")
-    st.dataframe(df_pontos, hide_index=True, width="stretch")
+    mostrar_tabela(df_pontos)
 
 # ======================= SPRINT 2: CAIXA-BRANCA =============================
 with aba_s2:
@@ -3020,43 +3362,32 @@ assinatura = hashlib.sha256((texto_funcao + df_casos.to_csv() + str(por_bloco) +
 pacote["pareceres"] = {k: st.session_state[f"parecer::{k}"] for k in list(ETAPAS) + ["geral"]
                        if f"parecer::{k}" in st.session_state}
 pacote["pareceres_prof"] = pareceres_profissionais()
+pacote.update(texto_funcao=texto_funcao, linha_funcao=linha_funcao, casos_base=casos_base,
+              descartadas=tabela_descartadas() if descartadas else pd.DataFrame())
 relatorio_html = gerar_relatorio_html(pacote)
 
 
-def botao_pdf(chave: str) -> None:
-    """Abre o laudo numa aba nova, ja formatado para A4, e chama 'Salvar como PDF' do navegador."""
-    conteudo = relatorio_html.replace('<body class="ts-relatorio">', '<body class="ts-relatorio" data-imprimir="1">', 1)
-    claro, escuro = CORES_ATUAIS[0], CORES_ATUAIS[1]
-    st.iframe(f"""<!doctype html><html><head><meta charset="utf-8"><style>
-:root {{ color-scheme: light dark; }}
-body {{ margin:0; font-family: 'IBM Plex Sans', 'Segoe UI', system-ui, sans-serif; background: transparent; }}
-button {{ width:100%; height:40px; border-radius:8px; font: 600 14px 'IBM Plex Sans', 'Segoe UI', system-ui, sans-serif;
-  cursor:pointer; border:1px solid light-dark({claro}, {escuro}); background: transparent; color: light-dark({claro}, {escuro}); }}
-button:hover {{ background: light-dark({claro}, {escuro}); color: light-dark(#fff, #0c131b); }}
-p {{ margin:.3rem 0 0; font-size:12px; color: light-dark(#536175, #9badc1); }}
-</style></head><body>
-<button id="pdf" type="button">Exportar PDF</button><p id="aviso"></p>
-<script>
-const laudo = {json.dumps(conteudo).replace("</", "<\\/")};
-document.getElementById("pdf").addEventListener("click", function () {{
-  const url = URL.createObjectURL(new Blob([laudo], {{type: "text/html"}}));
-  const janela = window.open(url, "_blank");
-  if (!janela) {{
-    document.getElementById("aviso").textContent = "O navegador bloqueou a nova aba. Permita pop-ups para este site, ou baixe o laudo em HTML e use Ctrl+P.";
-  }}
-}});
-</script></body></html>""", height=64)
+def botao_pdf_da_aba(nome: str, chave: str) -> None:
+    """PDF so desta aba, gerado no clique (nao pesa a pagina)."""
+    st.download_button("Baixar esta aba em PDF", data=lambda: pdf_das_abas(pacote, [nome], COR_DO_PDF),
+                       file_name=f"{FUNCAO_ALVO}_{chave}.pdf", mime="application/pdf", key=f"pdf_{chave}",
+                       icon=":material/picture_as_pdf:", on_click="ignore")
 
 
 def botoes_de_download(chave: str) -> None:
-    b1, b2, b3, _ = st.columns([1.7, 1.5, 1.2, 1.6])
-    with b3:
-        botao_pdf(chave)
-    b1.download_button("Baixar o laudo completo (HTML)", relatorio_html, key=f"laudo_{chave}",
+    b1, b2, b3, b4 = st.columns(4)
+    b3.download_button("Laudo completo em PDF", data=lambda: pdf_das_abas(pacote, ABAS, COR_DO_PDF),
+                       file_name=f"laudo_completo_{FUNCAO_ALVO}.pdf", mime="application/pdf", key="pdf_completo",
+                       icon=":material/picture_as_pdf:", type="primary", on_click="ignore", width="stretch",
+                       help="Todas as abas num só PDF, cada uma começando numa página nova.")
+    b4.download_button("Só esta aba em PDF", data=lambda: pdf_das_abas(pacote, ["Laudo"], COR_DO_PDF),
+                       file_name=f"{FUNCAO_ALVO}_laudo.pdf", mime="application/pdf", key="pdf_laudo",
+                       icon=":material/description:", on_click="ignore", width="stretch")
+    b1.download_button("Laudo completo (HTML)", relatorio_html, key=f"laudo_{chave}",
                        file_name=f"laudo_{FUNCAO_ALVO}.html", mime="text/html", width="stretch",
-                       icon=":material/download:", type="primary",
+                       icon=":material/download:",
                        help="Abre em qualquer navegador, no modo claro ou escuro. Tem um botão para salvar em PDF.")
-    b2.download_button("Baixar casos de teste (CSV)", df_casos.to_csv(index=False, sep=";").encode("utf-8-sig"),
+    b2.download_button("Casos de teste (CSV)", df_casos.to_csv(index=False, sep=";").encode("utf-8-sig"),
                        key=f"csv_{chave}", file_name=f"casos_de_teste_{FUNCAO_ALVO}.csv", mime="text/csv",
                        width="stretch", icon=":material/table:")
 
@@ -3175,25 +3506,23 @@ with aba_s4:
          "Asserções (teste de unidade)"])
     with aba_req:
         st.subheader("Requisitos derivados da especificação")
-        st.table(pacote["requisitos"].style.hide(axis="index"))
+        mostrar_tabela(pacote["requisitos"])
         st.subheader("Casos de teste por fluxo")
         st.html(html_fluxos(casos))
-        st.dataframe(pacote["derivados"], hide_index=True, width="stretch", height="content")
+        mostrar_tabela(pacote["derivados"])
         st.caption("Rastreio: os requisitos que cada caso verifica. Um caso sem resposta definida na especificação "
                    "não verifica nenhum requisito.")
     with aba_rtm:
         st.html(html_bidirecional(rtm))
         st.subheader("A matriz")
-        st.dataframe(pacote["matriz_rtm"], hide_index=True, width="stretch")
-        st.caption("Linhas: requisitos. Colunas: casos de teste. ✓ = o caso verifica o requisito e passou; "
-                   "✕ = verifica e falhou; vazio = não verifica. A coluna Total conta os casos de cada requisito.")
+        mostrar_tabela(pacote["matriz_rtm"])
+        st.caption("Linhas: casos de teste. Colunas: requisitos. ✓ = o caso verifica o requisito e passou; "
+                   "✕ = verifica e falhou; vazio = não verifica. A linha Total conta os casos de cada requisito.")
     with aba_conferencias:
-        st.table(pacote["criterios_suite"].style.hide(axis="index"))
+        mostrar_tabela(pacote["criterios_suite"])
     with aba_asercoes:
         st.write(TEXTO_UNIDADE)
-        st.dataframe(pacote["asercoes"], hide_index=True, width="stretch", height="content",
-                     column_config={"Asserção": st.column_config.TextColumn(width="large"),
-                                    "Resultado": st.column_config.TextColumn(width="medium")})
+        mostrar_tabela(pacote["asercoes"])
         st.download_button("Baixar estes testes em Python", script_de_testes(casos, pacote["arquivo"]),
                            key="baixar_testes", file_name=f"test_{FUNCAO_ALVO}.py", mime="text/x-python",
                            icon=":material/code:")
@@ -3266,7 +3595,7 @@ with aba_fontes:
         "é o mesmo que aparece nas faixas de base teórica das outras abas."))
     st.html(html_fontes())
     st.subheader("Origem dos dados desta análise")
-    st.dataframe(df_origem, hide_index=True, width="stretch")
+    mostrar_tabela(df_origem)
     st.subheader("Como os resultados são obtidos")
     st.markdown(
         "- **Esperado (caixa-preta):** vem das quatro regras da especificação, sem olhar o código.\n"
@@ -3287,6 +3616,9 @@ with aba_fontes:
 with aba_laudo:
     st.html(html_veredito(pacote))
     botoes_de_download("laudo")
+for _nome, _lugar in TOPO_DA_ABA.items():
+    with _lugar:
+        botao_pdf_da_aba(_nome, {"Programa e especificação": "programa", "Fontes": "fontes"}.get(_nome, CHAVE_DA_ABA.get(_nome, "aba")))
     st.html(html_secao("O combinado, regra por regra",
                        "O que o manual diz que a função deve fazer, e se ela cumpriu cada regra nos testes."))
     st.html(html_regras(pacote))
