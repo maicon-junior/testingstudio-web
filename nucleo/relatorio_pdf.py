@@ -1,5 +1,5 @@
 """
-relatorio_pdf.py - Gera o laudo em PDF (A4), uma aba do site por secao.
+nucleo/relatorio_pdf.py - Gera o laudo em PDF (A4), uma aba do site por secao.
 
 O app monta o conteudo de cada aba como uma lista de BLOCOS e este modulo
 desenha: titulos, paragrafos, quadros de numeros, tabelas que quebram linha
@@ -36,7 +36,18 @@ from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.platypus import (BaseDocTemplate, CondPageBreak, Flowable, Frame, KeepTogether, PageBreak,
                                 PageTemplate, Paragraph, Spacer, Table, TableStyle, XPreformatted)
 
-PASTA_FONTES = Path(__file__).resolve().parent / "fontes_pdf"
+_AQUI = Path(__file__).resolve().parent
+# Onde procurar as fontes DejaVu: a pasta fontes_pdf ao lado deste arquivo e, se ela
+# faltar, outros lugares comuns (inclusive as fontes do proprio sistema Linux).
+LUGARES_DAS_FONTES = [_AQUI / "fontes_pdf", _AQUI, _AQUI.parent / "fontes_pdf", _AQUI.parent,
+                      Path("/usr/share/fonts/truetype/dejavu")]
+
+
+def _pasta_das_fontes() -> Path:
+    for pasta in LUGARES_DAS_FONTES:
+        if all((pasta / nome).exists() for nome in ("DejaVuSans.ttf", "DejaVuSans-Bold.ttf", "DejaVuSansMono.ttf")):
+            return pasta
+    raise FileNotFoundError("Fontes do PDF nao encontradas. Envie a pasta nucleo/fontes_pdf junto com o app.")
 LARGURA, ALTURA = A4
 MARGEM_X, MARGEM_TOPO, MARGEM_BASE = 16 * mm, 20 * mm, 18 * mm
 UTIL = LARGURA - 2 * MARGEM_X
@@ -64,9 +75,10 @@ def _registrar_fontes() -> None:
     global _FONTES_PRONTAS
     if _FONTES_PRONTAS:
         return
-    pdfmetrics.registerFont(TTFont("Texto", str(PASTA_FONTES / "DejaVuSans.ttf")))
-    pdfmetrics.registerFont(TTFont("Texto-Negrito", str(PASTA_FONTES / "DejaVuSans-Bold.ttf")))
-    pdfmetrics.registerFont(TTFont("Codigo", str(PASTA_FONTES / "DejaVuSansMono.ttf")))
+    pasta = _pasta_das_fontes()
+    pdfmetrics.registerFont(TTFont("Texto", str(pasta / "DejaVuSans.ttf")))
+    pdfmetrics.registerFont(TTFont("Texto-Negrito", str(pasta / "DejaVuSans-Bold.ttf")))
+    pdfmetrics.registerFont(TTFont("Codigo", str(pasta / "DejaVuSansMono.ttf")))
     from reportlab.lib.fonts import addMapping
     addMapping("Texto", 0, 0, "Texto")
     addMapping("Texto", 1, 0, "Texto-Negrito")

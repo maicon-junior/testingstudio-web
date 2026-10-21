@@ -11,7 +11,7 @@ if errorlevel 1 goto sempython
 
 echo.
 echo  [1/3] Conferindo as bibliotecas. Pode levar alguns minutos...
-%PY% -m pip install --quiet --disable-pip-version-check pyinstaller streamlit pandas google-genai
+%PY% -m pip install --quiet --disable-pip-version-check pyinstaller -r ..\requirements.txt
 if errorlevel 1 goto erro
 
 echo  [2/3] Montando o executavel. Leva de 3 a 10 minutos, nao feche esta janela...

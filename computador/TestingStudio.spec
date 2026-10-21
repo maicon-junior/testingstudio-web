@@ -9,17 +9,31 @@ from PyInstaller.utils.hooks import collect_all, copy_metadata
 datas, binaries, hiddenimports = collect_all("streamlit")
 datas += copy_metadata("streamlit")
 
-# Arquivos do projeto que vao dentro do executavel.
-datas += [("app.py", "."), ("motor.py", "."), ("caixa_preta.py", "."), ("relatorio_pdf.py", "."),
-          (".streamlit/config.toml", ".streamlit")]
-datas += [(os.path.join("fontes_pdf", nome), "fontes_pdf") for nome in os.listdir("fontes_pdf")]
+# Arquivos do projeto que vao dentro do executavel. Este arquivo fica na pasta
+# computador/; os arquivos do app ficam na pasta principal, um nivel acima.
+RAIZ = os.path.abspath(os.path.join(SPECPATH, ".."))
+
+
+def da_raiz(*partes):
+    return os.path.join(RAIZ, *partes)
+
+
+def pasta_inteira(pasta):
+    """Todos os arquivos de uma pasta (e subpastas), no mesmo lugar dentro do executavel."""
+    itens = []
+    for raiz, pastas, nomes in os.walk(da_raiz(pasta)):
+        pastas[:] = [p for p in pastas if p != "__pycache__"]
+        destino = os.path.relpath(raiz, RAIZ)
+        itens += [(os.path.join(raiz, nome), destino) for nome in nomes]
+    return itens
+
+
+datas += [(da_raiz("app.py"), "."), (da_raiz(".streamlit", "config.toml"), ".streamlit")]
+datas += pasta_inteira("nucleo") + pasta_inteira("static") + pasta_inteira("exemplos")
 datas += collect_all("reportlab")[0]
-datas += [(os.path.join("static", nome), "static") for nome in os.listdir("static")]
-if os.path.exists("cad0001_item_calculo.txt"):
-    datas += [("cad0001_item_calculo.txt", ".")]
 
 a = Analysis(
-    ["iniciar.py"],
+    [os.path.join(SPECPATH, "iniciar.py")],
     binaries=binaries,
     datas=datas,
     hiddenimports=hiddenimports + ["altair", "pandas", "google.genai", "reportlab"] + collect_all("reportlab")[2],

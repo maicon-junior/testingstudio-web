@@ -14,7 +14,10 @@ VERSAO = 3          # conferida pelo app.py (evita misturar versoes no servidor)
 
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 
-import motor
+try:
+    from . import motor          # dentro do pacote nucleo (o app usa assim)
+except ImportError:
+    import motor                 # rodando solto, ao lado do motor.py
 
 NULO_OPCOES = {"zero": "vale 0", "invalido": "é inválido (recusa)", "indefinido": "a especificação não diz"}
 DISTANCIA_EXTERIOR = Decimal(100)          # quanto o ponto Exterior fica alem da fronteira

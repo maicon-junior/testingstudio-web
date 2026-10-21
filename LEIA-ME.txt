@@ -29,23 +29,25 @@ O QUE A PAGINA FAZ
             comecando em pagina nova) ou "So esta aba em PDF". No topo das
             outras abas: "Baixar esta aba em PDF".
 
-ARQUIVOS DESTA PASTA
+ARQUIVOS DESTA PASTA (mantenha as pastas como estao)
   app.py                     A pagina (leitura do .txt, tabelas, graficos, Gemini).
-  motor.py                   Os calculos: interpretador de 4GL, grafo, McCabe,
-                             fluxo de dados e mutantes.
-  caixa_preta.py             Especificacao (oraculo), classes, fronteiras e
-                             geracao dos casos de teste.
-  relatorio_pdf.py           Monta os PDFs (laudo completo ou uma aba).
-  fontes_pdf/                Fontes DejaVu usadas no PDF (letras como e, <=, x).
   requirements.txt           Bibliotecas que o servidor instala ao publicar.
-  .streamlit/config.toml     Visual da pagina: tema claro e escuro e fontes.
-  static/                    Fontes IBM Plex usadas pela pagina (6 arquivos).
+  LEIA-ME.txt                Este guia.
   .gitignore                 Impede que a chave e arquivos gerados subam ao GitHub.
-  cad0001_item_calculo.txt   Fonte do CAD0001 (arquivo de exemplo).
-  iniciar.py                 Abre a pagina no navegador do seu computador.
-  Abrir_TestingStudio.bat    Dois cliques para usar no seu computador.
-  Gerar_Executavel.bat       Dois cliques para criar o TestingStudio.exe.
-  TestingStudio.spec         Receita usada para montar o executavel.
+  .streamlit/config.toml     Visual da pagina: tema claro e escuro e fontes.
+  static/                    Fontes IBM Plex usadas pela pagina.
+  nucleo/                    Os calculos, separados da pagina:
+    motor.py                   interpretador de 4GL, grafo, McCabe, fluxo de
+                               dados e mutantes;
+    caixa_preta.py             especificacao (oraculo), classes, fronteiras e
+                               casos de teste;
+    relatorio_pdf.py           monta os PDFs (laudo completo ou uma aba);
+    fontes_pdf/                fontes DejaVu usadas no PDF.
+  exemplos/                  cad0001_item_calculo.txt (arquivo de exemplo).
+  computador/                Para usar sem internet, no Windows:
+    Abrir_TestingStudio.bat    dois cliques para abrir a pagina;
+    Gerar_Executavel.bat       dois cliques para criar o TestingStudio.exe;
+    iniciar.py, TestingStudio.spec   usados pelos dois .bat.
 
 ANALISAR OUTRO PROGRAMA
   1. Anexe o .txt. Na aba "Programa e especificacao", escolha a funcao.
@@ -63,10 +65,10 @@ ANALISAR OUTRO PROGRAMA
 PUBLICAR ONLINE (a chave do Gemini fica escondida no servidor)
   1. Crie uma conta em https://github.com e um repositorio novo
      (botao New, nome testingstudio-web, deixe Public, Create repository).
-  2. No repositorio, clique em "uploading an existing file" e arraste
-     TODOS os arquivos desta pasta, inclusive as pastas .streamlit,
-     static e fontes_pdf (sem elas a pagina abre com cores e letras
-     padrao e o PDF nao e gerado).
+  2. No repositorio, clique em "uploading an existing file". Abra esta
+     pasta no Windows, selecione TUDO (Ctrl+A) e arraste para a pagina do
+     GitHub: as pastas vao junto e continuam organizadas. Confira se
+     apareceram .streamlit, static, nucleo, exemplos e computador.
      Nao arraste o TestingStudio.exe. Clique em Commit changes.
   3. Entre em https://share.streamlit.io com a conta do GitHub e clique
      em Create app, depois em "Yup, I have an app".
@@ -79,12 +81,11 @@ PUBLICAR ONLINE (a chave do Gemini fica escondida no servidor)
      e o link para enviar ao professor.
 
   Para ATUALIZAR uma pagina ja publicada: no repositorio do GitHub, clique
-  em Add file, Upload files, arraste de novo os arquivos desta pasta
-  (app.py, motor.py, caixa_preta.py, relatorio_pdf.py, requirements.txt,
-  .streamlit/config.toml e as pastas static e fontes_pdf) e clique em
-  Commit changes. O Streamlit republica sozinho em um ou dois minutos; o
-  link continua o mesmo. Quando o requirements.txt mudar, abra o menu do
-  app em share.streamlit.io e clique em Reboot app.
+  em Add file, Upload files, selecione tudo nesta pasta (Ctrl+A), arraste
+  e clique em Commit changes. Os arquivos com o mesmo nome sao trocados.
+  O Streamlit republica sozinho em um ou dois minutos; o link continua o
+  mesmo. Quando o requirements.txt mudar, abra o menu do app em
+  share.streamlit.io e clique em Reboot app.
 
   O que o professor ve: a pagina completa, sem campo de chave. A barra
   lateral so informa que a chave esta guardada no servidor.
@@ -109,19 +110,20 @@ MODO CLARO E ESCURO
 
 RODAR OS TESTES FORA DA PAGINA
   Na aba Sprint 4, Assercoes, baixe o test_<funcao>.py e salve nesta pasta
-  (junto do motor.py e do .txt analisado). Depois, no terminal:
+  (a principal, onde fica o app.py), junto do .txt analisado. Depois, no
+  terminal, a partir desta pasta:
       python test_<funcao>.py
   ou, com o pytest instalado (pip install pytest):
       python -m pytest -v test_<funcao>.py
 
 PARA USAR NO SEU COMPUTADOR
-  De dois cliques em Abrir_TestingStudio.bat.
+  Abra a pasta computador e de dois cliques em Abrir_TestingStudio.bat.
   A pagina abre sozinha no navegador. Para encerrar, feche a janela preta.
   Aqui a chave e colada na barra lateral.
 
 EXECUTAVEL (alternativa ao link)
-  De dois cliques em Gerar_Executavel.bat e espere de 3 a 10 minutos.
-  O TestingStudio.exe aparece nesta pasta e tem mais de 100 MB: envie por
+  Na pasta computador, de dois cliques em Gerar_Executavel.bat e espere de
+  3 a 10 minutos. O TestingStudio.exe aparece na pasta computador e tem mais de 100 MB: envie por
   link do Google Drive. No executavel cada pessoa cola a propria chave.
 
 CHAVE DO GEMINI

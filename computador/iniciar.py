@@ -2,7 +2,7 @@
 Abre o TestingStudio Web no navegador.
 
 Serve para duas coisas:
-  - rodar direto:            python iniciar.py   (ou Abrir_TestingStudio.bat)
+  - rodar direto:            python computador/iniciar.py   (ou Abrir_TestingStudio.bat)
   - virar o executavel:      Gerar_Executavel.bat empacota este arquivo com o PyInstaller
 """
 
@@ -15,10 +15,11 @@ import webbrowser
 from pathlib import Path
 
 def pasta_do_app() -> Path:
-    """No executavel, os arquivos ficam na pasta temporaria do PyInstaller."""
+    """No executavel, os arquivos ficam na pasta temporaria do PyInstaller.
+    Fora dele, o app.py fica na pasta principal (acima desta pasta computador/)."""
     if getattr(sys, "frozen", False):
         return Path(sys._MEIPASS)
-    return Path(__file__).resolve().parent
+    return Path(__file__).resolve().parent.parent
 
 
 def porta_livre() -> int:

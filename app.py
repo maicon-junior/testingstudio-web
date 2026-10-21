@@ -9,8 +9,9 @@ Teste de Software I, Univille, Prof. Frank Piffer
   Sprint 4           : validacao da propria suite (oraculo, rastreabilidade, assercoes) e pitch.
 
 Este arquivo cuida da PAGINA (leitura do .txt, laudo, tabelas, Gemini).
-A caixa-preta (especificacao, oraculo, classes, fronteiras) fica em caixa_preta.py.
-O interpretador de 4GL e os calculos das Sprints 2 a 4 ficam em motor.py.
+A caixa-preta (especificacao, oraculo, classes, fronteiras) fica em nucleo/caixa_preta.py.
+O interpretador de 4GL e os calculos das Sprints 2 a 4 ficam em nucleo/motor.py.
+O PDF do laudo e montado por nucleo/relatorio_pdf.py.
 O CAD0001 vem junto so como exemplo: qualquer arquivo 4GL pode ser analisado.
 Cores, fontes e modo claro/escuro ficam em .streamlit/config.toml e na pasta static/.
 
@@ -32,7 +33,7 @@ import streamlit as st
 
 import importlib
 
-import motor
+from nucleo import motor
 
 # O Streamlit Cloud guarda os modulos importados na memoria. Quando o app.py e
 # atualizado e o motor.py nao (ou o servidor nao o recarrega), as versoes ficam
@@ -41,17 +42,18 @@ VERSAO_DO_MOTOR = 3
 if getattr(motor, "VERSAO", 0) < VERSAO_DO_MOTOR:
     motor = importlib.reload(motor)
 try:
-    import caixa_preta as cp
+    from nucleo import caixa_preta as cp
     if getattr(cp, "VERSAO", 0) < VERSAO_DO_MOTOR:
         cp = importlib.reload(cp)
-    ARQUIVOS_DESATUALIZADOS = [nome for nome, modulo in (("motor.py", motor), ("caixa_preta.py", cp))
+    ARQUIVOS_DESATUALIZADOS = [nome for nome, modulo in (("nucleo/motor.py", motor), ("nucleo/caixa_preta.py", cp))
                                if getattr(modulo, "VERSAO", 0) < VERSAO_DO_MOTOR]
 except ImportError:
     cp = None
-    ARQUIVOS_DESATUALIZADOS = ["caixa_preta.py"]
+    ARQUIVOS_DESATUALIZADOS = ["nucleo/caixa_preta.py"]
 
 PASTA = Path(__file__).resolve().parent
 ARQUIVO_EXEMPLO = "cad0001_item_calculo.txt"
+PASTA_EXEMPLOS = PASTA / "exemplos"
 # Preenchidos depois que o arquivo e lido e a funcao escolhida (valem para a execucao atual).
 FUNCAO_ALVO = ""                 # unidade sob teste
 SPEC = {}                        # especificacao (oraculo) escrita na pagina
@@ -2527,15 +2529,18 @@ Testes de unidade de {FUNCAO_ALVO}, gerados pelo TestingStudio.
 O resultado esperado de cada teste vem da especificacao (oraculo), nunca do codigo.
 Este arquivo e o driver: le o fonte 4GL, chama a funcao e confere cada assercao.
 
-Como rodar: deixe este arquivo na pasta do TestingStudio, junto do motor.py e do
-{arquivo}, e use um dos comandos:
+Como rodar: deixe este arquivo na pasta principal do TestingStudio (onde fica o
+app.py), junto do {arquivo}, e use um dos comandos:
     python test_{FUNCAO_ALVO}.py
     python -m pytest -v test_{FUNCAO_ALVO}.py
 """
 from decimal import Decimal as D
 from pathlib import Path
 
-import motor
+try:
+    from nucleo import motor      # na pasta principal do TestingStudio
+except ImportError:
+    import motor                  # ao lado do motor.py
 
 ARQUIVO = Path(__file__).with_name({arquivo!r})
 FUNCAO = {FUNCAO_ALVO!r}
@@ -2828,7 +2833,7 @@ CONSTRUTORES = dict(zip(ABAS, [blocos_laudo, blocos_programa, blocos_sprint1, bl
 
 
 def pdf_das_abas(d, abas, cor: str) -> bytes:
-    import relatorio_pdf
+    from nucleo import relatorio_pdf
     ident = {"arquivo": d["arquivo"], "funcao": FUNCAO_ALVO, "tamanho": f"{d['linhas']} linhas",
              "quando": d["quando"][:16]}
     return relatorio_pdf.gerar_pdf([(nome, CONSTRUTORES[nome](d)) for nome in abas], ident, cor)
@@ -2932,7 +2937,7 @@ elif st.session_state.get("fonte_origem") == "upload":
 
 if "fonte_original" not in st.session_state:
     st.html(html_boas_vindas())
-    exemplo = PASTA / ARQUIVO_EXEMPLO
+    exemplo = PASTA_EXEMPLOS / ARQUIVO_EXEMPLO
     if exemplo.exists():
         if st.button(f"Usar o arquivo de exemplo ({ARQUIVO_EXEMPLO})", icon=":material/description:"):
             registrar_fonte(ARQUIVO_EXEMPLO, exemplo.read_bytes(), "exemplo", ("exemplo",))
@@ -3526,7 +3531,7 @@ with aba_s4:
         st.download_button("Baixar estes testes em Python", script_de_testes(casos, pacote["arquivo"]),
                            key="baixar_testes", file_name=f"test_{FUNCAO_ALVO}.py", mime="text/x-python",
                            icon=":material/code:")
-        st.caption(f"Para rodar fora da página: deixe o arquivo na pasta do TestingStudio, junto do motor.py e do "
+        st.caption(f"Para rodar fora da página: deixe o arquivo na pasta principal do TestingStudio (onde fica o app.py), junto do "
                    f"{pacote['arquivo']}, e use python test_{FUNCAO_ALVO}.py (ou python -m pytest -v test_{FUNCAO_ALVO}.py).")
     parecer_da_etapa("s4")
 
@@ -3616,9 +3621,6 @@ with aba_fontes:
 with aba_laudo:
     st.html(html_veredito(pacote))
     botoes_de_download("laudo")
-for _nome, _lugar in TOPO_DA_ABA.items():
-    with _lugar:
-        botao_pdf_da_aba(_nome, {"Programa e especificação": "programa", "Fontes": "fontes"}.get(_nome, CHAVE_DA_ABA.get(_nome, "aba")))
     st.html(html_secao("O combinado, regra por regra",
                        "O que o manual diz que a função deve fazer, e se ela cumpriu cada regra nos testes."))
     st.html(html_regras(pacote))
@@ -3643,3 +3645,8 @@ for _nome, _lugar in TOPO_DA_ABA.items():
     st.html(html_apoio())
     with st.expander("Glossário: os termos técnicos em linguagem simples", icon=":material/menu_book:"):
         st.html(html_glossario())
+
+# Botao de PDF no topo de cada aba (os conteineres foram criados junto com as abas).
+for _nome, _lugar in TOPO_DA_ABA.items():
+    with _lugar:
+        botao_pdf_da_aba(_nome, {"Programa e especificação": "programa", "Fontes": "fontes"}.get(_nome, CHAVE_DA_ABA.get(_nome, "aba")))
