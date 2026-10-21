@@ -1904,13 +1904,20 @@ def tabela_execucoes(a) -> pd.DataFrame:
     return pd.DataFrame(linhas)
 
 
+def _sem_coluna_vazia(df: pd.DataFrame, coluna: str = "Como cobrir") -> pd.DataFrame:
+    """"Como cobrir" so tem texto quando algo ficou sem teste. Se tudo foi coberto, a coluna sai."""
+    if coluna in df.columns and not df[coluna].astype(str).str.strip().any():
+        return df.drop(columns=[coluna])
+    return df
+
+
 def tabela_caminhos(a) -> pd.DataFrame:
-    return pd.DataFrame([{
+    return _sem_coluna_vazia(pd.DataFrame([{
         "Caminho completo": texto_caminho(c["nos"]),
         "Conjunto básico": "Sim" if c["basico"] else "",
         "Coberto por": ", ".join(c["casos"]) if c["casos"] else "nenhum caso",
         "Como cobrir": "" if c["casos"] else como_cobrir(c["sugestao"], a["sondagens"]),
-    } for c in a["caminhos"]])
+    } for c in a["caminhos"]]))
 
 
 def tabela_variaveis(a) -> pd.DataFrame:
@@ -1935,7 +1942,7 @@ def tabela_pares(a) -> pd.DataFrame:
                        "Tipo": "c-uso" if p["tipo"] == "c" else "p-uso",
                        "Coberto por": ", ".join(p["casos"]) if p["casos"] else "nenhum caso",
                        "Como cobrir": "" if p["casos"] else como_cobrir(p["sugestao"], a["sondagens"])})
-    return pd.DataFrame(linhas)
+    return _sem_coluna_vazia(pd.DataFrame(linhas))
 
 
 def painel_caixa_branca(a, chave: str) -> None:
